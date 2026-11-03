@@ -1,0 +1,3 @@
+#[@< if eq (getenv "TELEMETRY_ENABLED" "false") "true" >@]
+{{ include "dognauts-common-chart.telemetry" (dict "releaseName" (printf "%s-kmcp-mcp-server" .Release.Name) "labels" "app.kubernetes.io/managed-by: kmcp" "componentName" "KMCP-MCP-Server") }}
+#[@< end >@]

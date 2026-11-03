@@ -1,0 +1,7 @@
+FROM harbor.neoflex.ru/test-images/llm-sandbox:0.0.1 AS base
+USER root
+RUN pip install --no-cache-dir fastapi uvicorn sse-starlette anyio mcp starlette
+WORKDIR /app
+COPY mcp_adapter.py run.py .
+USER sandbox
+ENTRYPOINT ["python3", "run.py"]

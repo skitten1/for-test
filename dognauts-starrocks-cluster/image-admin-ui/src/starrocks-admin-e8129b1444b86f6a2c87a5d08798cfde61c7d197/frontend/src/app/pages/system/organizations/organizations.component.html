@@ -1,0 +1,38 @@
+<nb-card>
+  <nb-card-header>
+    <div class="header">
+      <div class="header__info">
+        <h5 class="header__title">Organization Management</h5>
+        <p class="header__subtitle">Manage system organizations and create and maintain multi-tenant organizations.</p>
+      </div>
+      <button
+        nbButton
+        status="primary"
+        size="small"
+        (click)="openCreateOrganization()"
+        [disabled]="!canCreateOrganization"
+        ngxHasPermission="api:organizations:create"
+      >
+        <nb-icon icon="plus-outline"></nb-icon>
+        Create Organization
+      </button>
+    </div>
+  </nb-card-header>
+
+  <nb-card-body>
+    <div *ngIf="loading" class="loading">
+      <nb-spinner size="large" status="primary"></nb-spinner>
+    </div>
+
+    <nb-alert *ngIf="!loading && !hasListPermission" status="warning">
+      You do not have permission to view organizations. Contact your administrator to request access.
+    </nb-alert>
+
+    <ng2-smart-table
+      *ngIf="!loading && hasListPermission"
+      [settings]="settings"
+      [source]="source"
+    ></ng2-smart-table>
+  </nb-card-body>
+</nb-card>
+

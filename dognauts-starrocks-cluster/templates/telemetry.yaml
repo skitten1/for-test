@@ -1,0 +1,3 @@
+#[@< if eq (getenv "TELEMETRY_ENABLED" "false") "true" >@]
+{{ include "dognauts-common-chart.telemetry" (dict "releaseName" (include "dognauts-starrocks.clusterName" .) "labels" (include "dognauts-starrocks.selectorLabels" .) "componentName" "StarRocks") }}
+#[@< end >@]

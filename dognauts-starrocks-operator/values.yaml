@@ -1,0 +1,57 @@
+global:
+  namespace: starrocks-system
+
+operator:
+  # pod label оператора: app: <nameOverride>-operator
+  nameOverride: kube-starrocks
+  timeZone: Europe/Moscow
+  starrocksOperator:
+    image:
+      repository: "harbor.neoflex.ru/dognauts/starrocks/operator"
+      # образ из форка оператора с патчем seccompProfile (см. README)
+      tag: "v1.11.8-dognauts.2"
+    imagePullPolicy: IfNotPresent
+    imagePullSecrets: []
+    replicaCount: 1
+    # пусто — оператор следит за всеми namespace (кластеры StarRocks создаются в проектах)
+    watchNamespace: ""
+    # домен кластера, если отличается от cluster.local (например, selgpu.local)
+    dnsDomainSuffix: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # у upstream-чарта есть только securityContext контейнера, поэтому seccompProfile задаём здесь
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1001
+      runAsGroup: 1001
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+      seccompProfile:
+        type: RuntimeDefault
+
+networkPolicy:
+  type: none
+  policies:
+    cilium:
+      selector:
+        matchLabels:
+          app: kube-starrocks-operator
+      egress:
+        toEntities:
+          - kube-apiserver
+        # оператор подключается к FE кластеров StarRocks в проектах (MySQL-протокол)
+        toEndpoints:
+          - namespace: Project.NS
+            labels:
+              app.kubernetes.io/component: fe
+            ports:
+              - port: "9030"
+                protocol: TCP

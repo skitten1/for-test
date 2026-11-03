@@ -1,0 +1,18 @@
+apiVersion: v2
+name: dognauts-starrocks-cluster
+description: StarRocks (MPP SQL-движок) как вложенный релиз проекта 2.0
+type: application
+version: 0.1.0
+appVersion: "4.1.7"
+keywords:
+  - dognauts-nested-release
+  - starrocks
+  - data-platform
+dependencies:
+  # Только кластер StarRocks (CR StarRocksCluster). Оператор и CRD ставятся на уровне платформы (см. README)
+  - name: starrocks
+    version: 1.11.8-patch.2
+    repository: oci://harbor.neoflex.ru/dognauts-helm
+  - name: dognauts-common-chart
+    version: ">=0.1.0 <1.0.0"
+    repository: oci://harbor.neoflex.ru/dognauts-helm

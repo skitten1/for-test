@@ -1,0 +1,86 @@
+{
+  "ui:order": [
+    "projectAnchor",
+    "global",
+    "networkPolicy",
+    "kmcp-template-service",
+    "kmcp-helm-service"
+  ],
+  "projectAnchor": {
+    "ui:order": ["description"]
+  },
+  "global": {
+    "ui:order": [
+      "vaultExternal",
+      "chartRepository"
+    ],
+    "vaultExternal": {
+      "ui:widget": "checkbox"
+    },
+    "chartRepository": {
+      "ui:order": ["url", "branch", "username", "azureRepos"],
+      "azureRepos": { "ui:widget": "checkbox" }
+    }
+  },
+  "networkPolicy": {
+    "ui:order": ["policies"],
+    "policies": {
+      "ui:options": {
+        "label": false
+      },
+      "ui:order": ["kmcp-mcp-servers"],
+      "kmcp-mcp-servers": {
+        "ui:options": {
+          "label": false
+        },
+        "ui:order": ["egress"],
+        "egress": {
+          "ui:options": {
+            "label": false
+          },
+          "ui:order": ["extra"],
+          "extra": {
+            "ui:options": {
+              "label": false
+            },
+            "ui:order": ["toFQDNs"]
+          }
+        }
+      }
+    }
+  },
+  "kmcp-template-service": {
+    "ui:order": [
+      "gitChartRepoToken",
+      "gitMetaRepoToken",
+      "config",
+      "helmRepository"
+    ],
+    "helmRepository": {},
+    "config": {
+      "ui:order": ["git"],
+      "git": {
+        "ui:order": ["metarepository"],
+        "metarepository": {
+          "ui:options": {
+            "label": false
+          },
+          "ui:order": ["username", "azureRepos"],
+          "azureRepos": { "ui:widget": "checkbox" }
+        }
+      }
+    },
+    "gitChartRepoToken": {
+      "ui:widget": "password"
+    },
+    "gitMetaRepoToken": {
+      "ui:widget": "password"
+    }
+  },
+  "kmcp-helm-service": {
+    "ui:order": ["gitChartRepoToken"],
+    "gitChartRepoToken": {
+      "ui:widget": "password"
+    }
+  }
+}

@@ -1,0 +1,564 @@
+global:
+  s3:
+    credentialsProject: "project-id"
+
+# Контракт с супервизором: name/namespace/enabled/isNestedRelease он дописывает сам
+# при установке вложенного релиза. Сам ProjectAnchor не устарел — устарело только
+# ProjectAnchor.spec.links. hooks.* читают хелперы common-chart (casbin, labels и др.).
+projectAnchor: # @schema hidden: true
+  name: ""
+  isNestedRelease: false
+  hooks:
+    podSecurityContext:
+      runAsUser: 1001
+      runAsGroup: 1001
+      runAsNonRoot: true
+      fsGroup: 1001
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+    kubectlImage:
+      registry: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]"
+      repository: alpine-kubectl
+      tag: 1.36.2
+
+# Публикация пунктов меню через CR ProjectComponent.
+# Содержимое записи — в templates/_project-component.yaml, как в остальных чартах
+projectComponent: # @schema hidden: true
+  enabled: true
+
+istio: # @schema hidden: true
+  hosts:
+    - '*'
+  gateways:
+    - istio-system/neogate
+  prefix: "/project-api/[@< strings.TrimPrefix (print .Env.NAMESPACES_PREFIX `-`) .Env.RELEASE_NAMESPACE >@]/[@< .Env.RELEASE_NAME >@]/starrocks"
+
+clusterDomain: "[@< .Env.CLUSTER_DOMAIN >@]" # @schema hidden: true
+
+# Секреты StarRocks хранятся в Vault. Поды получают их переменными окружения через webhook
+# Bank-Vaults: значение вида vault:<путь>#<ключ> — каждый под получает только нужные ключи.
+# Пароли генерирует джоба vault-ensure (templates/vault-jobs.yaml) — только если их ещё нет,
+# поэтому они не меняются при обновлениях и не появляются в манифестах Helm.
+vault: # @schema hidden: true
+  # Секреты кластера: MYSQL_PWD (root), STARROCKS_CONSOLE_PASSWORD, STARROCKS_CONSOLE_BASIC
+  path: '[@< .Env.VAULT_KV_NAME >@][@< .Env.VAULT_DEFAULT_SECRET_PATH >@]/tenants/[@< .Env.NAMESPACES_PREFIX >@]/projects/[@< strings.TrimPrefix (print .Env.NAMESPACES_PREFIX `-`) .Env.RELEASE_NAMESPACE >@]/starrocks'
+  # Секреты Admin UI: APP_JWT_SECRET, APP_PLATFORM_AUTOLOGIN_PASSWORD, STARROCKS_ADMIN_UI_SR_PASSWORD
+  adminUiPath: '[@< .Env.VAULT_KV_NAME >@][@< .Env.VAULT_DEFAULT_SECRET_PATH >@]/tenants/[@< .Env.NAMESPACES_PREFIX >@]/projects/[@< strings.TrimPrefix (print .Env.NAMESPACES_PREFIX `-`) .Env.RELEASE_NAMESPACE >@]/starrocks-admin-ui'
+  # те же пути для удаления (KV v2: .../metadata/... вместо .../data/...)
+  metadataPath: '[@< strings.ReplaceAll `/data` `/metadata` .Env.VAULT_KV_NAME >@]...'
+  adminUiMetadataPath: '[@< strings.ReplaceAll `/data` `/metadata` .Env.VAULT_KV_NAME >@]...'
+  host: '[@< strings.TrimPrefix `https://` .Env.VAULT_ENDPOINT >@]'
+  # удалять секреты из Vault при удалении релиза (вместе с данными StarRocks)
+  deleteOnUninstall: true
+  # Джобы, которым нужен Vault, работают под ServiceAccount <релиз>-vault-jobs
+  # (шаблон *-vault-jobs внесён в роль Vault; SA создаёт templates/vault-jobs-serviceaccount.yaml)
+
+# ext_authz (Keycloak + Casbin) на прокси веб-консоли и на Admin UI — через шлюз платформы
+# в StarRocks попадают только туда.
+# SQL по протоколу MySQL (9030) — это TCP, ext_authz его не касается: там работает
+# собственная авторизация StarRocks (пользователи, роли, в будущем SSO через Keycloak).
+envoyFilter: # @schema hidden: true
+  enabled: true
+  authServer:
+    url: "[@< .Env.DOGNAUTS_AUTHZ_HOST >@]"
+    port: "[@< .Env.DOGNAUTS_AUTHZ_PORT >@]"
+    headers:
+      x-service-name: starrocks
+
+loggerEnvoyFilter: # @schema hidden: true
+  enabled: true
+  loggerServer:
+    url: "[@< .Env.EXTERNAL_LOGGER_HOST >@]"
+    port: "[@< .Env.EXTERNAL_LOGGER_PORT >@]"
+
+# Веб-консоль FE (8030) защищена Basic-авторизацией StarRocks и не умеет работать под префиксом.
+# Перед ней стоит прокси (templates/console-proxy.yaml): подставляет учётку служебного пользователя
+# (из Vault) и переписывает ссылки под префикс платформы.
+console: # @schema hidden: true
+  enabled: true
+  # служебный пользователь StarRocks; создаёт init-джоба, пароль — в Vault
+  username: platform_console
+  roles:
+    - db_admin
+    - cluster_admin
+  image:
+    # nginxinc/nginx-unprivileged, зеркало в Harbor
+    repository: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]/nginx-unprivileged"
+    tag: "1.27-alpine"
+  podSecurityContext:
+    runAsUser: 101
+    runAsGroup: 101
+    runAsNonRoot: true
+    fsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    privileged: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# StarRocks Admin (форк jlon/starrocks-admin v1 с патчами Dognauts: токен в X-SR-Admin-Token,
+# автовход под служебным пользователем — доступ проверяет платформа через ext_authz).
+adminUi:
+  enabled: true # @schema description: Развернуть StarRocks Admin UI
+  image: # @schema hidden: true
+    repository: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]/starrocks-admin"
+    tag: "1.0.0-dognauts.4"
+  # пользователь приложения, под которым UI входит автоматически
+  appUser: admin # @schema hidden: true
+  # пользователь StarRocks, под которым UI подключается к кластеру (создаёт init-джоба)
+  starrocksUser: platform_admin_ui # @schema hidden: true
+  starrocksRoles: # @schema hidden: true
+    - db_admin
+    - cluster_admin
+    - user_admin
+  # имя кластера в UI
+  clusterName: starrocks # @schema hidden: true
+  storage: # @schema hidden: true
+    # SQLite с настройками UI
+    size: 1Gi
+    storageClass: ""
+  podSecurityContext: # @schema hidden: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    runAsNonRoot: true
+    fsGroup: 1001
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext: # @schema hidden: true
+    allowPrivilegeEscalation: false
+    privileged: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  resources: # @schema hidden: true
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Каталог Iceberg (Lakekeeper) в StarRocks: init-джоба создаёт external catalog.
+# StarRocks не умеет remote signing Lakekeeper, поэтому к S3 он ходит со своими ключами.
+lakekeeperCatalog:
+  enabled: false # @schema description: Подключить каталог Iceberg (Lakekeeper) в StarRocks
+  name: lakekeeper # @schema description: Имя каталога в StarRocks
+  # REST-адрес каталога внутри кластера, например http://<релиз>-lakekeeper:8181/catalog
+  uri: "" # @schema description: URI каталога Lakekeeper (http://<сервис>:8181/catalog)
+  warehouse: "" # @schema description: Имя warehouse в Lakekeeper
+
+# S3 для StarRocks (данные Iceberg-таблиц, функция FILES())
+s3:
+  endpoint: "https://<S3_EXT_DOMAIN>"
+  region: "us-east-1"
+  pathStyleAccess: true
+
+
+# Post-install хуки: init-джоба (пароль root, служебные пользователи, каталог Iceberg)
+# и настройка Admin UI. Заменяет initPassword upstream-чарта (у его Job нет securityContext).
+init: # @schema hidden: true
+  enabled: true
+  image:
+    # тот же образ, что у FE: в нём есть клиент mysql
+    repository: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]/starrocks/fe-ubuntu"
+    tag: "4.1.7"
+  # пользователь starrocks в образах StarRocks
+  podSecurityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    privileged: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  # сколько ждать готовности FE / Admin UI: попытки × интервал (с)
+  waitAttempts: 90
+  waitInterval: 10
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Общие настройки корневой ФС «только для чтения» для FE и BE: каталоги, в которые StarRocks
+# пишет, вынесены на emptyDir; conf копируется init-контейнером (скрипт запуска создаёт в нём
+# ссылки на конфиг из ConfigMap); PID-файлы и UDF — в /tmp (через переменные в fe.conf/be.conf).
+starrocksSecurityContext: &srContainerSecurityContext # @schema hidden: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# Upstream-чарт starrocks (только CR StarRocksCluster; оператор ставится платформой)
+starrocks:
+  # Встроенная Job установки пароля не используется: у неё нет securityContext
+  initPassword: # @schema hidden: true
+    enabled: false
+
+  timeZone: Europe/Moscow # @schema hidden: true
+
+  starrocksCluster:
+    # Фиксированное имя: upstream-чарт выводит его без кавычек в именах и метках ресурсов,
+    # поэтому плейсхолдер [@< >@] здесь ломает YAML. Один кластер на проект —
+    # и стабильный адрес для клиентов: starrocks-fe-service:9030
+    name: starrocks # @schema hidden: true
+    enabledBe: true # @schema hidden: true
+    enabledCn: false # @schema hidden: true
+    componentValues: # @schema hidden: true
+      image:
+        tag: "4.1.7"
+      # оператор запускает контейнеры от UID/GID 1000 и ставит allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      imagePullSecrets:
+        - name: "[@< .Env.IMAGE_PULL_SECRET >@]"
+      # метки для селекторов сетевых политик и EnvoyFilter;
+      # app.kubernetes.io/component (fe/be) ставит сам оператор
+      podLabels:
+        app.kubernetes.io/name: starrocks
+        app.kubernetes.io/instance: "[@< .Env.RELEASE_NAME >@]"
+
+  starrocksFESpec:
+    annotations:
+      vault.security.banzaicloud.io/vault-env-from-path: '[@< .Env.VAULT_KV_NAME >@][@< .Env.VAULT_DEFAULT_SECRET_PATH >@]/tenants/[@< .Env.SSO_REALM >@]/projects/{{ .Values.global.s3.credentialsProject }}/common'
+    serviceAccount: starrocks-fe # @schema hidden: true
+    replicas: 1 # @schema description: Количество FE (координаторы запросов, метаданные)
+    image: # @schema hidden: true
+      repository: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]/starrocks/fe-ubuntu"
+    capabilities: # @schema hidden: true
+      drop:
+        - ALL
+    # Пароль root (MYSQL_PWD) для скриптов запуска — из Vault (webhook Bank-Vaults).
+    # Путь тот же, что vault.path (values не шаблонизируются — поэтому продублирован)
+    feEnvVars: # @schema hidden: true
+      - name: MYSQL_PWD
+        value: 'vault:[@< .Env.VAULT_KV_NAME >@][@< .Env.VAULT_DEFAULT_SECRET_PATH >@]/tenants/[@< .Env.NAMESPACES_PREFIX >@]/projects/[@< strings.TrimPrefix (print .Env.NAMESPACES_PREFIX `-`) .Env.RELEASE_NAMESPACE >@]/starrocks#MYSQL_PWD'
+    readOnlyRootFilesystem: true # @schema hidden: true
+    emptyDirs: # @schema hidden: true
+      - name: fe-conf
+        mountPath: /opt/starrocks/fe/conf
+      - name: fe-log
+        mountPath: /opt/starrocks/fe/log
+      - name: fe-tmp
+        mountPath: /tmp
+    initContainers: # @schema hidden: true
+      - name: copy-conf
+        image: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]/starrocks/fe-ubuntu:4.1.7"
+        command: ["sh", "-c", "cp -r /opt/starrocks/fe/conf/. /work/conf/"]
+        volumeMounts:
+          - name: fe-conf
+            mountPath: /work/conf
+        securityContext:
+          <<: *srContainerSecurityContext
+          runAsUser: 1337
+          runAsGroup: 1000
+        resources:
+          requests: { cpu: 10m, memory: 16Mi }
+          limits: { cpu: 100m, memory: 64Mi }
+    # При удалении релиза оператор удаляет StatefulSet, а вместе с ним — и PVC FE
+    persistentVolumeClaimRetentionPolicy: # @schema hidden: true
+      whenDeleted: Delete
+    # Профиль для тест-стенда. Память FE = куча Java (-Xmx в config) + ~0.5Gi
+    resources: # @schema description: Ресурсы FE
+      requests:
+        cpu: 250m
+        memory: 1536Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+    storageSpec: # @schema hidden: true
+      # без name оператор использует emptyDir, и метаданные теряются при перезапуске пода
+      name: fe
+      storageClassName: ""
+      # FE останавливается, если на диске метаданных свободно меньше 5Gi
+      storageSize: 10Gi
+      # логи не храним на отдельном томе (emptyDir fe-log)
+      logStorageSize: 0Gi
+    # Как у upstream, но -Xmx под наши лимиты памяти (у upstream 8 ГБ).
+    # PID_DIR, tmp_dir, small_file_dir — из корня образа в записываемые каталоги (readOnlyRootFilesystem)
+    config: | # @schema hidden: true
+      LOG_DIR = ${STARROCKS_HOME}/log
+      PID_DIR = /tmp
+      DATE = "$(date +%Y%m%d-%H%M%S)"
+      JAVA_OPTS="-Dlog4j2.formatMsgNoLookups=true -Xmx1024m -XX:+UseG1GC -Xlog:gc*:${LOG_DIR}/fe.gc.log.$DATE:time"
+      http_port = 8030
+      rpc_port = 9020
+      query_port = 9030
+      edit_log_port = 9010
+      mysql_service_nio_enabled = true
+      sys_log_level = INFO
+      min_graceful_exit_time_second = 25
+      tmp_dir = /tmp/starrocks-fe
+      small_file_dir = /opt/starrocks/fe/meta/small_files
+      iceberg_metadata_cache_disk_path = /tmp/starrocks-fe-cache/iceberg
+      yarn_config_dir = /tmp/yarn-config
+      plugin_dir = /opt/starrocks/fe/meta/plugins
+
+  starrocksBeSpec:
+    annotations:
+      vault.security.banzaicloud.io/vault-env-from-path: '[@< .Env.VAULT_KV_NAME >@][@< .Env.VAULT_DEFAULT_SECRET_PATH >@]/tenants/[@< .Env.SSO_REALM >@]/projects/{{ .Values.global.s3.credentialsProject }}/common'
+    serviceAccount: starrocks-be # @schema hidden: true
+    replicas: 1 # @schema description: Количество BE (хранение и выполнение запросов)
+    image: # @schema hidden: true
+      repository: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]/starrocks/be-ubuntu"
+    capabilities: # @schema hidden: true
+      drop:
+        - ALL
+    # Пароль root (MYSQL_PWD) для регистрации BE в FE — из Vault (путь как в vault.path).
+    # Пока init-джоба не задала пароль, BE получает Access denied и повторяет попытки — это нормально
+    beEnvVars: # @schema hidden: true
+      - name: MYSQL_PWD
+        value: 'vault:[@< .Env.VAULT_KV_NAME >@][@< .Env.VAULT_DEFAULT_SECRET_PATH >@]/tenants/[@< .Env.NAMESPACES_PREFIX >@]/projects/[@< strings.TrimPrefix (print .Env.NAMESPACES_PREFIX `-`) .Env.RELEASE_NAMESPACE >@]/starrocks#MYSQL_PWD'
+    readOnlyRootFilesystem: true # @schema hidden: true
+    emptyDirs: # @schema hidden: true
+      - name: be-conf
+        mountPath: /opt/starrocks/be/conf
+      - name: be-log
+        mountPath: /opt/starrocks/be/log
+      - name: be-tmp
+        mountPath: /tmp
+      - name: be-jdbc-drivers
+        mountPath: /opt/starrocks/be/lib/jdbc_drivers
+    initContainers: # @schema hidden: true
+      - name: copy-conf
+        image: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]/starrocks/be-ubuntu:4.1.7"
+        command: ["sh", "-c", "cp -r /opt/starrocks/be/conf/. /work/conf/"]
+        volumeMounts:
+          - name: be-conf
+            mountPath: /work/conf
+        securityContext:
+          <<: *srContainerSecurityContext
+          runAsUser: 1337
+          runAsGroup: 1000
+        resources:
+          requests: { cpu: 10m, memory: 16Mi }
+          limits: { cpu: 100m, memory: 64Mi }
+    # Данные BE удаляются вместе с релизом, как и у FE
+    persistentVolumeClaimRetentionPolicy: # @schema hidden: true
+      whenDeleted: Delete
+    # Профиль для тест-стенда. BE берёт под себя до 90% лимита памяти пода
+    resources: # @schema description: Ресурсы BE
+      requests:
+        cpu: 250m
+        memory: 1536Mi
+      limits:
+        cpu: "1"
+        memory: 3Gi
+    storageSpec:
+      name: be # @schema hidden: true
+      storageClassName: "" # @schema hidden: true
+      storageSize: 10Gi # @schema description: Размер диска BE для внутренних таблиц StarRocks
+      logStorageSize: 0Gi # @schema hidden: true
+    # Как у upstream + каталоги из корня образа в записываемые (readOnlyRootFilesystem)
+    config: | # @schema hidden: true
+      be_port = 9060
+      webserver_port = 8040
+      heartbeat_service_port = 9050
+      brpc_port = 8060
+      sys_log_level = INFO
+      PID_DIR = /tmp
+      UDF_RUNTIME_DIR = /tmp/udf-runtime
+      small_file_dir = /opt/starrocks/be/storage/small_file
+      user_function_dir = /tmp/udf
+      pull_load_task_dir = /tmp/pull_load
+      query_scratch_dirs = /opt/starrocks/be/storage/scratch
+      spill_local_storage_dir = /opt/starrocks/be/storage/spill
+      plugin_path = /opt/starrocks/be/storage/plugin
+      sys_minidump_dir = /opt/starrocks/be/log
+      query_debug_trace_dir = /opt/starrocks/be/log/query_debug_trace
+
+networkPolicy: # @schema hidden: true
+  policies:
+    starrocks-fe:
+      selector:
+        app.kubernetes.io/name: starrocks
+        app.kubernetes.io/component: fe
+      egress:
+        toEndpoints:
+          # FE -> BE: be_port, heartbeat, brpc, webserver
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: starrocks
+              app.kubernetes.io/component: be
+            ports:
+              - { port: "9060", protocol: TCP }
+              - { port: "9050", protocol: TCP }
+              - { port: "8060", protocol: TCP }
+              - { port: "8040", protocol: TCP }
+          # FE <-> FE (несколько реплик)
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: starrocks
+              app.kubernetes.io/component: fe
+            ports:
+              - { port: "9010", protocol: TCP }
+              - { port: "9020", protocol: TCP }
+              - { port: "8030", protocol: TCP }
+              - { port: "9030", protocol: TCP }
+          # каталог Iceberg (Lakekeeper) в namespace проекта
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: lakekeeper
+            ports:
+              - { port: "8181", protocol: TCP }
+        toFQDNs:
+          - domains:
+              - "[@< .Env.S3_EXT_DOMAIN >@]"
+            ports:
+              - port: "[@< .Env.S3_PORT >@]"
+                protocol: TCP
+          # Vault: секреты подставляет webhook Bank-Vaults при старте контейнера
+          - &vaultFqdn
+            domains:
+              - '[@< strings.TrimPrefix `https://` .Env.VAULT_ENDPOINT >@]'
+            ports:
+              - port: "443"
+                protocol: TCP
+        extra:
+          toFQDNs: [] # @schema itemRef: file://schemas/FQDN-item.json ; description: Дополнительные домены для исходящего трафика FE
+      ingress:
+        fromEndpoints:
+          # SQL (MySQL), HTTP, Stream Load из namespace проекта (ноутбуки, Airflow, прокси консоли,
+          # Admin UI, init-джоба); сюда же попадают BE (heartbeat/rpc) и другие FE
+          - namespace: Release.Namespace
+            ports:
+              - { port: "9030", protocol: TCP }
+              - { port: "8030", protocol: TCP }
+              - { port: "9020", protocol: TCP }
+              - { port: "9010", protocol: TCP }
+          # оператор StarRocks (чарт dognauts-starrocks-operator) подключается к FE
+          - namespace: starrocks-system
+            labels:
+              app: kube-starrocks-operator
+            ports:
+              - { port: "9030", protocol: TCP }
+    starrocks-be:
+      selector:
+        app.kubernetes.io/name: starrocks
+        app.kubernetes.io/component: be
+      egress:
+        toEndpoints:
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: starrocks
+            ports:
+              - { port: "9020", protocol: TCP }
+              - { port: "9030", protocol: TCP }
+              - { port: "8030", protocol: TCP }
+              - { port: "8060", protocol: TCP }
+              - { port: "9060", protocol: TCP }
+        toFQDNs:
+          # BE читает данные Iceberg-таблиц напрямую из S3
+          - domains:
+              - "[@< .Env.S3_EXT_DOMAIN >@]"
+            ports:
+              - port: "[@< .Env.S3_PORT >@]"
+                protocol: TCP
+          - *vaultFqdn
+      ingress:
+        fromEndpoints:
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: starrocks
+            ports:
+              - { port: "9060", protocol: TCP }
+              - { port: "9050", protocol: TCP }
+              - { port: "8060", protocol: TCP }
+              - { port: "8040", protocol: TCP }
+    starrocks-console:
+      selector:
+        app.kubernetes.io/name: starrocks-console
+      # вход от ingress-gateway
+      expose:
+        port: 8080
+      egress:
+        toEndpoints:
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: starrocks
+              app.kubernetes.io/component: fe
+            ports:
+              - { port: "8030", protocol: TCP }
+          # authz-service (ext_authz из sidecar)
+          - namespace: "[@< .Env.PLATFORM_NAMESPACE_NAME >@]"
+            ports:
+              - port: "[@< .Env.DOGNAUTS_AUTHZ_PORT >@]"
+                protocol: TCP
+        toFQDNs:
+          - *vaultFqdn
+    starrocks-admin-ui:
+      selector:
+        app.kubernetes.io/name: starrocks-admin-ui
+      # вход от ingress-gateway и от джобы настройки
+      expose:
+        port: 8080
+      egress:
+        toEndpoints:
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: starrocks
+              app.kubernetes.io/component: fe
+            ports:
+              - { port: "8030", protocol: TCP }
+              - { port: "9030", protocol: TCP }
+          - namespace: "[@< .Env.PLATFORM_NAMESPACE_NAME >@]"
+            ports:
+              - port: "[@< .Env.DOGNAUTS_AUTHZ_PORT >@]"
+                protocol: TCP
+        toFQDNs:
+          - *vaultFqdn
+    starrocks-init:
+      selector:
+        app.kubernetes.io/name: starrocks-init
+      egress:
+        toEndpoints:
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: starrocks
+              app.kubernetes.io/component: fe
+            ports:
+              - { port: "9030", protocol: TCP }
+        toFQDNs:
+          - *vaultFqdn
+    # Джобы Vault — pre-install/pre-delete хуки: политика тоже хук, иначе её ещё нет в момент их запуска
+    starrocks-vault:
+      selector:
+        app.kubernetes.io/name: starrocks-vault
+      annotations:
+        helm.sh/hook: pre-install,pre-upgrade,pre-delete
+        helm.sh/hook-weight: "-5"
+        helm.sh/hook-delete-policy: before-hook-creation
+      egress:
+        toFQDNs:
+          - *vaultFqdn

@@ -1,0 +1,24 @@
+{{- $np := merge (.Values.networkPolicy | default dict) ((.Values.global | default dict).networkPolicy | default dict) -}}
+{{- $type := toString ($np.type | default "none") -}}
+{{- if or (not (hasKey $np "enabled")) $np.enabled }}
+{{- range $key, $policy := ($np.policies | default dict) }}
+{{- $on := true }}
+{{- if hasKey $policy "enabled" }}{{- $on = $policy.enabled }}{{- end }}
+{{- if $on }}
+{{- $policyRendered := include "dognauts-common-chart.netpolicy" (dict
+     "context"  $
+     "config"   $policy
+     "name"     (printf "%s-%s" $.Release.Name ($policy.name | default $key))
+     "selector" $policy.selector) }}
+{{- if contains "[@<" $type }}
+---
+#[@< if eq (getenv "NETPOLICY_TYPE" "none") "cilium" >@]
+{{ $policyRendered }}
+#[@< end >@]
+{{- else if eq $type "cilium" }}
+---
+{{ $policyRendered }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,206 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "adminUi": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Развернуть StarRocks Admin UI",
+                    "type": "boolean"
+                }
+            }
+        },
+        "global": {
+            "type": "object",
+            "properties": {
+                "s3": {
+                    "type": "object",
+                    "properties": {
+                        "credentialsProject": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "lakekeeperCatalog": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Подключить каталог Iceberg (Lakekeeper) в StarRocks",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "Имя каталога в StarRocks",
+                    "type": "string"
+                },
+                "uri": {
+                    "description": "URI каталога Lakekeeper (http://\u003cсервис\u003e:8181/catalog)",
+                    "type": "string"
+                },
+                "warehouse": {
+                    "description": "Имя warehouse в Lakekeeper",
+                    "type": "string"
+                }
+            }
+        },
+        "s3": {
+            "type": "object",
+            "properties": {
+                "endpoint": {
+                    "type": "string"
+                },
+                "pathStyleAccess": {
+                    "type": "boolean"
+                },
+                "region": {
+                    "type": "string"
+                }
+            }
+        },
+        "starrocks": {
+            "type": "object",
+            "properties": {
+                "starrocksBeSpec": {
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "type": "object",
+                            "properties": {
+                                "vault.security.banzaicloud.io/vault-env-from-path": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "replicas": {
+                            "description": "Количество BE (хранение и выполнение запросов)",
+                            "type": "integer"
+                        },
+                        "resources": {
+                            "description": "Ресурсы BE",
+                            "type": "object",
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": "string"
+                                        },
+                                        "memory": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": "string"
+                                        },
+                                        "memory": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "storageSpec": {
+                            "type": "object",
+                            "properties": {
+                                "storageSize": {
+                                    "description": "Размер диска BE для внутренних таблиц StarRocks",
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
+                "starrocksCluster": {
+                    "type": "object"
+                },
+                "starrocksFESpec": {
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "type": "object",
+                            "properties": {
+                                "vault.security.banzaicloud.io/vault-env-from-path": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "replicas": {
+                            "description": "Количество FE (координаторы запросов, метаданные)",
+                            "type": "integer"
+                        },
+                        "resources": {
+                            "description": "Ресурсы FE",
+                            "type": "object",
+                            "properties": {
+                                "limits": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": "string"
+                                        },
+                                        "memory": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "requests": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cpu": {
+                                            "type": "string"
+                                        },
+                                        "memory": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "starrocksSecurityContext": {
+            "type": "object",
+            "properties": {
+                "allowPrivilegeEscalation": {
+                    "type": "boolean"
+                },
+                "capabilities": {
+                    "type": "object",
+                    "properties": {
+                        "drop": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "readOnlyRootFilesystem": {
+                    "type": "boolean"
+                },
+                "runAsGroup": {
+                    "type": "integer"
+                },
+                "runAsNonRoot": {
+                    "type": "boolean"
+                },
+                "seccompProfile": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

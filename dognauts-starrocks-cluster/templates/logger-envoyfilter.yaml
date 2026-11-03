@@ -1,0 +1,21 @@
+{{- if .Values.loggerEnvoyFilter.enabled }}
+{{- $targets := list (dict "name" "starrocks-console" "labels" (include "dognauts-starrocks.consoleSelectorLabels" .)) }}
+{{- if .Values.adminUi.enabled }}
+{{- $targets = append $targets (dict "name" "starrocks-admin-ui" "labels" (include "dognauts-starrocks.adminUiSelectorLabels" .)) }}
+{{- end }}
+{{- range $t := $targets }}
+---
+#[@< if eq (getenv "EXTERNAL_LOGGER_ENABLED" "false") "true" >@]
+{{ include "dognauts-common-chart.logs.envoyfilter"
+  (dict
+  "ServiceName" $t.name
+  "ServiceNamespace" $.Release.Namespace
+  "ServiceInstance" $.Release.Name
+  "LoggerHost" (printf "%s.%s" $.Values.loggerEnvoyFilter.loggerServer.url $.Values.clusterDomain)
+  "LoggerPort" $.Values.loggerEnvoyFilter.loggerServer.port
+  "Labels" (include "dognauts-starrocks.labels" $)
+  "SelectorLabels" $t.labels
+  ) }}
+#[@< end >@]
+{{- end }}
+{{- end }}

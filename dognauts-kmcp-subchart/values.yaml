@@ -1,0 +1,327 @@
+# TODO!!! фикс полей анкора после согласования
+global: 
+  vaultExternal: false # @schema type: boolean ; description: For external Vault only
+  vaultEndpoint: &vaultEndpoint "[@< .Env.VAULT_ENDPOINT >@]" # @schema hidden: true
+  networkPolicy: # @schema hidden: true
+    type: "[@< .Env.NETPOLICY_TYPE >@]"
+  chartRepository:
+    url: "" # @schema type: string ; required: true ; description: Git repo URL to store charts for deploy
+    branch: "" # @schema type: string ; required: true ; description: Git branch to store charts for deploy
+    username: "" # @schema type: string ; required: true ; description: Git username to store charts for deploy
+    azureRepos: false # @schema type: boolean ; default: false ; description: For Azure DevOps Repos only
+
+projectAnchor: 
+  enabled: true # @schema hidden: true
+  name: "" # @schema hidden: true
+  namespace: "[@< .Env.PLATFORM_NAMESPACE_NAME >@]" # @schema hidden: true
+  description: "Subchart for deploying an MCP server" # @schema readOnly: true
+  hooks: # @schema hidden: true
+    podSecurityContext: &vaultHookPodSecurityContext
+      runAsUser: 1001
+      runAsGroup: 1001
+      runAsNonRoot: true
+      fsGroup: 1001
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext: &vaultHookSecurityContext
+      allowPrivilegeEscalation: false
+      privileged: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+    kubectlImage: &vaultHookKubectlImage
+      registry: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]"
+      repository: alpine-kubectl
+      tag: 1.36.2
+  nestedChart: # @schema hidden: true
+    links:
+      type: "componentContext"
+      subjectArea: "kmcp-servers"
+      parent: "kmcp"
+      parentIcon: "PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj48cGF0aCBkPSJNNi41IDVINS41QzUuMjIzODUgNSA1IDUuMjIzODUgNSA1LjVWNi41QzUgNi43NzYxNSA1LjIyMzg1IDcgNS41IDdINi41QzYuNzc2MTUgNyA3IDYuNzc2MTUgNyA2LjVWNS41QzcgNS4yMjM4NSA2Ljc3NjE1IDUgNi41IDVaIiBmaWxsPSIjMzIzRTQ4Ii8+PHBhdGggZD0iTTkuNSA1SDEwLjVDMTAuNzc2MSA1IDExIDUuMjIzODUgMTEgNS41VjYuNUMxMSA2Ljc3NjE1IDEwLjc3NjEgNyAxMC41IDdIOS41QzkuMjIzODUgNyA5IDYuNzc2MTUgOSA2LjVWNS41QzkgNS4yMjM4NSA5LjIyMzg1IDUgOS41IDVaIiBmaWxsPSIjMzIzRTQ4Ii8+PHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xIDJDMSAxLjQ0NzcyIDEuNDQ3NzIgMSAyIDFIMjJDMjIuNTUyMyAxIDIzIDEuNDQ3NzIgMjMgMlYxMEMyMyAxMC41NTIzIDIyLjU1MjMgMTEgMjIgMTFIMkMxLjQ0NzcyIDExIDEgMTAuNTUyMyAxIDEwVjJaTTMgM1Y5SDIxVjNIM1oiIGZpbGw9IiMzMjNFNDgiLz48cGF0aCBkPSJNNi41IDE3SDUuNUM1LjIyMzg1IDE3IDUgMTcuMjIzOSA1IDE3LjVWMTguNUM1IDE4Ljc3NjEgNS4yMjM4NSAxOSA1LjUgMTlINi41QzYuNzc2MTUgMTkgNyAxOC43NzYxIDcgMTguNVYxNy41QzcgMTcuMjIzOSA2Ljc3NjE1IDE3IDYuNSAxN1oiIGZpbGw9IiMzMjNFNDgiLz48cGF0aCBkPSJNMTAuNSAxN0g5LjVDOS4yMjM4NSAxNyA5IDE3LjIyMzkgOSAxNy41VjE4LjVDOSAxOC43NzYxIDkuMjIzODUgMTkgOS41IDE5SDEwLjVDMTAuNzc2MSAxOSAxMSAxOC43NzYxIDExIDE4LjVWMTcuNUMxMSAxNy4yMjM5IDEwLjc3NjEgMTcgMTAuNSAxN1oiIGZpbGw9IiMzMjNFNDgiLz48cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTEgMTRDMSAxMy40NDc3IDEuNDQ3NzIgMTMgMiAxM0gyMkMyMi41NTIzIDEzIDIzIDEzLjQ0NzcgMjMgMTRWMjJDMjMgMjIuNTUyMyAyMi41NTIzIDIzIDIyIDIzSDJDMS40NDc3MiAyMyAxIDIyLjU1MjMgMSAyMlYxNFpNMyAxNVYyMUgyMVYxNUgzWiIgZmlsbD0iIzMyM0U0OCIvPjwvc3ZnPg=="
+      parentLabels:
+        en: "MCP Servers"
+        ru: "MCP-серверы"
+      # labels, slug - вычисляется в _project-anchor.tpl
+      resourceTable:
+        - resource:
+            group: "kagent.dev"
+            version: "v1alpha1"
+            kind: "MCPServer"
+            plural: "mcpservers"
+            resourceHandlerSubjectArea: "kmcp-servers"
+          fields:
+            - path: "metadata.name"
+              caption: { en: "Name", ru: "Имя" }
+              type: "string"
+              order: 1
+            - path: "metadata.namespace"
+              caption: { en: "Namespace", ru: "Пространство имен" }
+              type: "string"
+              order: 2
+            - path: "metadata.labels.mcpKind"
+              caption: { en: "MCP Type", ru: "Тип MCP" }
+              type: "string"
+              order: 3
+            - path: "spec.deployment.image"
+              caption: { en: "Image", ru: "Образ" }
+              type: "string"
+              order: 4
+            - path: "spec.transportType"
+              caption: { en: "Transport", ru: "Транспорт" }
+              type: "string"
+              order: 5
+            - path: "status.conditions"
+              caption: { en: "Conditions", ru: "Условия" }
+              type: "string"
+              order: 6
+          calculatedFields:
+            - name: "ready_status"
+              caption: { en: "Ready", ru: "Готовность" }
+              type: "string"
+              order: 7
+          actions: []
+
+kmcp-resource-handler: # @schema hidden: true
+  clusterDomain: "[@< .Env.CLUSTER_DOMAIN >@]"
+  image:
+    registry: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]"
+  config:
+    resource:
+      group: "kagent.dev"
+      version: "v1alpha1"
+      kind: "MCPServer"
+      plural: "mcpservers"
+      resourceHandlerSubjectArea: "kmcp-servers"
+      fields:
+        - "metadata.name"
+        - "metadata.namespace"
+        - "metadata.labels.mcpKind"
+        - "spec.deployment.image"
+        - "spec.transportType"
+        - "status.conditions"
+      actions: []
+    templates:
+      calculated_fields:
+        - name: "ready_status"
+          template: '{{ range .conditions }}{{ if eq .type "Ready" }}{{ .status }}{{ end }}{{ end }}'
+          properties:
+            conditions: "status.conditions"
+
+  # RBAC для объектов MCPServer (kagent.dev/v1alpha1)
+  rbac:
+    enabled: true
+    rules:
+      - apiGroups: ["kagent.dev"]
+        resources: ["mcpservers"]
+        verbs: ["get", "list", "watch", "update", "patch"]
+
+  istio:
+    envoyFilter:
+      authServer:
+        url: "[@< .Env.DOGNAUTS_AUTHZ_HOST >@]"
+        port: "[@< .Env.DOGNAUTS_AUTHZ_PORT >@]"
+        headers:
+          x-service-name: kmcp-resource-handler
+    virtualServiceEnabled: false
+    gateways:
+      - "[@< .Env.PLATFORM_GATEWAY >@]"
+    hosts:
+      - "[@< .Env.PLATFORM_HOST >@]"
+    keycloak:
+      hostname: "[@< .Env.SSO_FQDN >@]"
+      auth_prefix: "[@< .Env.SSO_AUTH_PREFIX >@]"
+      realm: "[@< .Env.SSO_REALM >@]"
+
+
+# dognauts-template-engine-service subchart (alias: kmcp-template-service)
+kmcp-template-service:
+  projectAnchor: # @schema hidden: true
+    hooks:
+      kubectlImage: *vaultHookKubectlImage
+      podSecurityContext: *vaultHookPodSecurityContext
+      securityContext: *vaultHookSecurityContext
+  vaultHook: # @schema hidden: true
+    enabled: true
+  vaultEndpoint: *vaultEndpoint # @schema hidden: true
+  clusterDomain: "[@< .Env.CLUSTER_DOMAIN >@]" # @schema hidden: true
+  image: # @schema hidden: true
+    registry: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]"
+  podAnnotations: # @schema hidden: true
+    vault.security.banzaicloud.io/vault-env-from-path: '[@< .Env.VAULT_KV_NAME >@][@< .Env.VAULT_DEFAULT_SECRET_PATH >@]/tenants/[@< .Env.NAMESPACES_PREFIX >@]/projects/[@< strings.TrimPrefix (print .Env.NAMESPACES_PREFIX `-`) .Env.RELEASE_NAMESPACE >@]/kmcp-template-service' 
+  envoyFilter: # @schema hidden: true
+    authServer:
+      url: "[@< .Env.DOGNAUTS_AUTHZ_HOST >@]"
+      port: "[@< .Env.DOGNAUTS_AUTHZ_PORT >@]"
+      headers:
+        x-service-name: kmcp-template-service
+  gitChartRepoToken: "" # @schema type: string ; required: true ; description: Git token to store charts for deploy
+  gitMetaRepoToken: "" # @schema type: string ; required: true ; description: Git token to get scaffold-templates
+  helmRepository: # @schema hidden: true
+    url: "[@< .Env.HELM_REPO_URL >@]" 
+  helmRepoLogin: "[@< .Env.OCI_USERNAME >@]" # @schema hidden: true
+  helmRepoPassword: "[@< .Env.OCI_PASSWORD >@]" # @schema hidden: true
+  config:
+    git:
+      authorName: "Dognauts KMCP Template Service" # @schema hidden: true
+      authorEmail: "dognauts.kmcp.template.service@neoflex.ru" # @schema hidden: true
+      metarepository:
+        url: "[@< .Env.META_REPO_URL >@]" # @schema hidden: true
+        branch: "[@< .Env.META_REPO_BRANCH >@]" # @schema hidden: true
+        username: "" # @schema type: string ; required: true ; description: Git username to get scaffold-templates from
+        azureRepos: false # @schema type: boolean ; default: false ; description: For Azure DevOps Repos only
+  rbac: # @schema hidden: true
+    create: false
+  istio: # @schema hidden: true
+    gateways:
+      - "[@< .Env.PLATFORM_GATEWAY >@]"
+    hosts:
+      - "[@< .Env.PLATFORM_HOST >@]"
+    principals:
+      - "[@< .Env.ISTIO_INGRESS_PRINCIPAL >@]"
+    keycloak:
+      hostname: "[@< .Env.SSO_FQDN >@]"
+      auth_prefix: "[@< .Env.SSO_AUTH_PREFIX >@]"
+      realm: "[@< .Env.SSO_REALM >@]"
+    virtualServiceEnabled: false
+  serviceAccount: # @schema hidden: true
+    name: kmcp-template-engine-service
+
+# dognauts-helm-service subchart (alias: kmcp-helm-service):
+kmcp-helm-service: 
+  projectAnchor: # @schema hidden: true
+    hooks:
+      kubectlImage: *vaultHookKubectlImage
+      podSecurityContext: *vaultHookPodSecurityContext
+      securityContext: *vaultHookSecurityContext
+  vaultHook: # @schema hidden: true
+    enabled: true
+  vaultEndpoint: *vaultEndpoint # @schema hidden: true
+  clusterDomain: "[@< .Env.CLUSTER_DOMAIN >@]" # @schema hidden: true
+  image: # @schema hidden: true
+    registry: "[@< .Env.DOCKER_IMAGE_REGISTRY >@]"
+  podAnnotations: # @schema hidden: true
+    vault.security.banzaicloud.io/vault-env-from-path: '[@< .Env.VAULT_KV_NAME >@][@< .Env.VAULT_DEFAULT_SECRET_PATH >@]/tenants/[@< .Env.NAMESPACES_PREFIX >@]/projects/[@< strings.TrimPrefix (print .Env.NAMESPACES_PREFIX `-`) .Env.RELEASE_NAMESPACE >@]/kmcp-helm-service'
+  envoyFilter: # @schema hidden: true  
+    authServer:
+      url: "[@< .Env.DOGNAUTS_AUTHZ_HOST >@]"
+      port: "[@< .Env.DOGNAUTS_AUTHZ_PORT >@]"
+      headers:
+        x-service-name: kmcp-helm-service
+  gitChartRepoToken: "" # @schema type: string ; required: true ; description: Git token to get charts for deploy
+  rbac: # @schema hidden: true
+    rules:
+      - apiGroups: ["kagent.dev"]
+        resources: ["mcpservers"]
+        verbs: ["create", "list", "get", "watch", "delete", "patch", "update"]
+      - apiGroups: [""]
+        resources: ["secrets", "configmaps"]
+        verbs: ["create", "list", "get", "watch", "delete", "patch", "update"]
+      - apiGroups: [""]
+        resources: ["serviceaccounts"]
+        verbs: ["create", "get", "delete"]  
+      - apiGroups: [""]
+        resources: ["pods", "pods/log"]
+        verbs: ["create", "delete", "get", "list", "watch"]
+      - apiGroups: [""]
+        resources: ["pods/status"]
+        verbs: ["get"]
+      - apiGroups: [""]
+        resources: ["pods/exec"]
+        verbs: ["create", "get"]
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        resources: ["roles", "rolebindings"]
+        verbs: ["create", "get", "delete"]
+  istio: # @schema hidden: true
+    gateways:
+      - "[@< .Env.PLATFORM_GATEWAY >@]"
+    hosts:
+      - "[@< .Env.PLATFORM_HOST >@]"
+    principals:
+      - "[@< .Env.ISTIO_INGRESS_PRINCIPAL >@]"
+    keycloak:
+      hostname: "[@< .Env.SSO_FQDN >@]"
+      auth_prefix: "[@< .Env.SSO_AUTH_PREFIX >@]"
+      realm: "[@< .Env.SSO_REALM >@]"
+    virtualServiceEnabled: false
+  serviceAccount: # @schema hidden: true
+    name: kmcp-helm-service 
+
+networkPolicy: 
+  enableHooks: true # @schema hidden: true
+  type: "[@< .Env.NETPOLICY_TYPE >@]" # @schema hidden: true
+  policies:
+    kmcp-mcp-servers:
+      selector: # @schema hidden: true
+        matchLabels:
+          app.kubernetes.io/managed-by: kmcp
+      egress:
+        toEntities: # @schema hidden: true
+          - kube-apiserver
+        toEndpoints: # @schema hidden: true
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: litellm
+            ports:
+              - port: "4000"
+                protocol: TCP
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/managed-by: kagent
+            ports:
+              - port: "8080"
+                protocol: TCP
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/component: controller
+            ports:
+              - port: "8083"
+                protocol: TCP
+          - namespace: d8-istio
+            labels:
+              app: istiod
+            ports:
+              - port: "15012"
+                protocol: TCP
+          - namespace: ot-collector
+            ports:
+              - port: 4318
+                protocol: TCP
+        extra:
+          toFQDNs: [] # @schema itemRef: file://schemas/FQDN-item.json ; description: List of destination domains' names or patterns for network policy.
+
+      ingress: # @schema hidden: true
+        fromEndpoints:
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/name: litellm
+            ports:
+              - port: "8000"
+                protocol: TCP
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/managed-by: kagent
+            ports:
+              - port: "8000"
+                protocol: TCP
+          - namespace: Release.Namespace
+            labels:
+              app.kubernetes.io/component: controller
+            ports:
+              - port: "8000"
+                protocol: TCP
+          - namespace: d8-monitoring
+            labels:
+              app.kubernetes.io/instance: main
+              app.kubernetes.io/name: prometheus
+            ports:
+              - port: "15020"
+                protocol: TCP
+    llm-sandbox: # @schema hidden: true
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: llm-sandbox
+      egress: {}
+      ingress: {}
+      

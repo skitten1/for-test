@@ -1,0 +1,155 @@
+{{- /*
+Секреты StarRocks в Vault.
+
+vault-ensure (pre-install, pre-upgrade): создаёт недостающие ключи со случайными значениями.
+Существующие значения НЕ меняет — пароль root должен совпадать с паролем в метаданных FE.
+Пароли генерирует сама джоба, поэтому они не попадают в манифесты Helm.
+
+vault-delete (pre-delete): удаляет секреты вместе с релизом (тома FE/BE тоже удаляются).
+
+Доступ к Vault — как у putSecretHook common-chart: VAULT_TOKEN=vault:login (webhook Bank-Vaults),
+VAULT_ADDR подставляет webhook.
+*/ -}}
+{{- define "dognauts-starrocks.vaultJobPod" -}}
+metadata:
+  labels:
+    app.kubernetes.io/name: starrocks-vault
+    app.kubernetes.io/instance: {{ .ctx.Release.Name }}
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ include "dognauts-starrocks.vaultJobsServiceAccount" .ctx }}
+  {{- with .ctx.Values.projectAnchor.hooks.podSecurityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .ctx.Values.starrocks.starrocksCluster.componentValues.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  # корневая ФС только для чтения — временные файлы curl/jq в /tmp
+  volumes:
+    - name: tmp
+      emptyDir: {}
+  containers:
+    - name: vault
+      {{- with .ctx.Values.projectAnchor.hooks.kubectlImage }}
+      image: "{{ .registry }}/{{ .repository }}:{{ .tag }}"
+      {{- end }}
+      {{- with .ctx.Values.projectAnchor.hooks.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      resources:
+        requests: { cpu: 20m, memory: 32Mi }
+        limits: { cpu: 200m, memory: 128Mi }
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      env:
+        - name: VAULT_TOKEN
+          value: "vault:login"
+        - name: SR_PATH
+          value: {{ .path | quote }}
+        - name: ADMIN_UI_PATH
+          value: {{ .adminUiPath | quote }}
+        - name: CONSOLE_USER
+          value: {{ .ctx.Values.console.username | quote }}
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+          trap 'curl -fsS -X POST http://127.0.0.1:15020/quitquitquit >/dev/null 2>&1 || true' EXIT
+{{ .script | indent 10 }}
+{{- end }}
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-starrocks-vault-ensure
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+{{- $script := `
+gen() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c 31; }
+
+# ensure <path> <ключ>... — дописать недостающие ключи случайными значениями; печатает итоговый JSON
+ensure() {
+  path="$1"; shift
+  code=$(curl -sk -o /tmp/resp -w '%{http_code}' -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/${path}") \
+    || { echo "Vault GET ${path}: curl failed" >&2; exit 1; }
+  case "$code" in
+    200) current=$(jq -c '.data.data // {}' /tmp/resp) ;;
+    404) current='{}' ;;
+    *) echo "Vault GET ${path}: HTTP ${code}" >&2; cat /tmp/resp >&2; exit 1 ;;
+  esac
+  updated="$current"
+  for key in "$@"; do
+    if [ -z "$(echo "$updated" | jq -r --arg k "$key" '.[$k] // empty')" ]; then
+      v=$(gen)
+      [ "$key" = "APP_PLATFORM_AUTOLOGIN_PASSWORD" ] && v="${v}!"
+      updated=$(echo "$updated" | jq -c --arg k "$key" --arg v "$v" '.[$k] = $v')
+      echo "  ${path}: generated ${key}" >&2
+    fi
+  done
+  echo "$updated"
+}
+
+write() {
+  path="$1"; data="$2"
+  code=$(curl -sk -o /tmp/resp -w '%{http_code}' -X POST \
+    -H "X-Vault-Token: ${VAULT_TOKEN}" -H "Content-Type: application/json" \
+    -d "{\"data\": ${data}}" "${VAULT_ADDR}/v1/${path}")
+  case "$code" in
+    200|204) echo "Vault: ${path} updated" ;;
+    *) echo "Vault POST ${path}: HTTP ${code}" >&2; cat /tmp/resp >&2; exit 1 ;;
+  esac
+}
+
+# --- секреты кластера
+sr=$(ensure "$SR_PATH" MYSQL_PWD STARROCKS_CONSOLE_PASSWORD)
+console_pw=$(echo "$sr" | jq -r '.STARROCKS_CONSOLE_PASSWORD')
+basic=$(printf '%s:%s' "$CONSOLE_USER" "$console_pw" | base64 | tr -d '\n')
+sr_new=$(echo "$sr" | jq -c --arg v "$basic" '.STARROCKS_CONSOLE_BASIC = $v')
+old_basic=$(curl -sk -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/${SR_PATH}" | jq -r '.data.data.STARROCKS_CONSOLE_BASIC // empty' || true)
+if [ "$sr_new" != "$sr" ] || [ "$old_basic" != "$basic" ]; then write "$SR_PATH" "$sr_new"; fi
+
+# --- секреты Admin UI
+ui_before=$(curl -sk -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/${ADMIN_UI_PATH}" | jq -c '.data.data // {}' || echo '{}')
+ui=$(ensure "$ADMIN_UI_PATH" APP_JWT_SECRET APP_PLATFORM_AUTOLOGIN_PASSWORD STARROCKS_ADMIN_UI_SR_PASSWORD)
+if [ "$ui" != "$ui_before" ]; then write "$ADMIN_UI_PATH" "$ui"; fi
+echo "Done"
+` }}
+    {{- include "dognauts-starrocks.vaultJobPod" (dict "ctx" . "path" .Values.vault.path "adminUiPath" .Values.vault.adminUiPath "script" $script) | nindent 4 }}
+{{- if .Values.vault.deleteOnUninstall }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-starrocks-vault-delete
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+{{- $script := `
+for path in "$SR_PATH" "$ADMIN_UI_PATH"; do
+  code=$(curl -sk -o /tmp/resp -w '%{http_code}' -X DELETE -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/${path}")
+  case "$code" in
+    200|204|404) echo "Vault: ${path} deleted (HTTP ${code})" ;;
+    *) echo "Vault DELETE ${path}: HTTP ${code}" >&2; cat /tmp/resp >&2; exit 1 ;;
+  esac
+done
+` }}
+    {{- include "dognauts-starrocks.vaultJobPod" (dict "ctx" . "path" .Values.vault.metadataPath "adminUiPath" .Values.vault.adminUiMetadataPath "script" $script) | nindent 4 }}
+{{- end }}

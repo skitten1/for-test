@@ -1,0 +1,26 @@
+apiVersion: v2
+name: dognauts-kmcp
+description: Subchart for deploying MCP-servers via the KMCP controller
+type: application
+version: 0.6.0
+keywords:
+  - dognauts-project
+  - dognauts-nested-release
+  - kmcp
+  - mcp
+dependencies:
+  - name: dognauts-resource-handler
+    version: "0.10.1"
+    repository: &dognauts_helm oci://harbor.neoflex.ru/dognauts-helm
+    alias: kmcp-resource-handler
+  - name: dognauts-helm-service
+    version: "1.7.0"
+    repository: *dognauts_helm
+    alias: kmcp-helm-service
+  - name: dognauts-template-engine-service
+    version: "2.9.0"
+    repository: *dognauts_helm
+    alias: kmcp-template-service
+  - name: dognauts-common-chart
+    repository: *dognauts_helm
+    version: ">=0.1.0 <1.0.0"

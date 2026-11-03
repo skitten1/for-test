@@ -1,0 +1,72 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "dognauts-starrocks.clusterName" . }}
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  hosts:
+  {{- with .Values.istio.hosts }}
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
+  gateways:
+  {{- with .Values.istio.gateways }}
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
+  http:
+    {{- if .Values.adminUi.enabled }}
+    {{- $admin := include "dognauts-starrocks.adminUiPrefix" . }}
+
+    # 1. Самостоятельная регистрация запрещена.
+    # Должно стоять ПЕРЕД общим API-маршрутом.
+    - match:
+        - uri:
+            prefix: {{ printf "%s/api/auth/register" $admin | quote }}
+      directResponse:
+        status: 403
+        body:
+          string: "Registration is disabled"
+
+    # 2. API Admin UI.
+    # Сохраняем project-scoped URL до Envoy ext_authz,
+    # после чего переписываем путь для backend.
+    - match:
+        - uri:
+            prefix: {{ printf "%s/api/" $admin | quote }}
+      rewrite:
+        uri: /api/
+      route:
+        - destination:
+            host: {{ include "dognauts-starrocks.adminUiName" . }}
+            port:
+              number: 8080
+
+    # 3. Статический frontend Admin UI.
+    - match:
+        - uri:
+            prefix: {{ printf "%s/" $admin | quote }}
+      rewrite:
+        uri: /
+      route:
+        - destination:
+            host: {{ include "dognauts-starrocks.adminUiName" . }}
+            port:
+              number: 8080
+
+    {{- end }}
+
+    # 4. Нативная веб-консоль StarRocks.
+    # exact — корневой URL без завершающего слеша.
+    # prefix — все вложенные пути, включая API и ресурсы консоли.
+    - match:
+        - uri:
+            exact: {{ include "dognauts-starrocks.appPrefix" . | quote }}
+        - uri:
+            prefix: {{ printf "%s/" (include "dognauts-starrocks.appPrefix" .) | quote }}
+      rewrite:
+        uri: /
+      route:
+        - destination:
+            host: {{ printf "%s-console" (include "dognauts-starrocks.clusterName" .) }}
+            port:
+              number: 8080

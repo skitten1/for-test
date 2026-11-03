@@ -1,0 +1,45 @@
+{{- /*
+Внутренние порты StarRocks, которые оператор не объявляет в своих сервисах.
+Без объявления Istio считает такой трафик «неизвестным»: шлёт открытый TCP без mTLS,
+и в namespace со строгим mTLS соединения FE->BE отбиваются (BE попадает в blacklist).
+С этими headless-сервисами Istio знает порты и шифрует трафик FE<->BE взаимным TLS,
+как любой другой трафик внутри mesh. appProtocol: tcp — без определения протокола
+по первым байтам (часть внутренних протоколов StarRocks его не переносит).
+Сами сервисы клиенты не используют: FE и BE обращаются друг к другу по адресам подов.
+*/ -}}
+{{- $cluster := include "dognauts-starrocks.clusterName" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $cluster }}-fe-internal
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: fe
+  ports:
+    - { name: tcp-edit-log, port: 9010, targetPort: 9010, appProtocol: tcp }
+    - { name: tcp-rpc,      port: 9020, targetPort: 9020, appProtocol: tcp }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $cluster }}-be-internal
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: be
+  ports:
+    - { name: tcp-be-port,   port: 9060, targetPort: 9060, appProtocol: tcp }
+    - { name: tcp-brpc,      port: 8060, targetPort: 8060, appProtocol: tcp }
+    - { name: tcp-heartbeat, port: 9050, targetPort: 9050, appProtocol: tcp }
+    - { name: tcp-webserver, port: 8040, targetPort: 8040, appProtocol: tcp }

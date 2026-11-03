@@ -1,0 +1,2 @@
+{{- include "dognauts-common-chart.project-anchor.nestedLinkHooks" (merge . (dict "links" (include "dognauts-kmcp.projectAnchorLinks" . | fromYaml))) }}
+

@@ -1,0 +1,128 @@
+{{- /*
+Прокси перед веб-консолью FE (nginx):
+ - подставляет Basic-учётку служебного пользователя StarRocks (STARROCKS_CONSOLE_BASIC из Vault),
+   поэтому пользователю платформы не нужно знать логин и пароль, а браузер не показывает окно входа;
+ - переписывает абсолютные ссылки консоли ("/backend", "/static?res=...") под префикс платформы:
+   консоль FE не умеет работать под базовым путём.
+Доступ к прокси проверяет платформа (ext_authz на поде прокси, envoyfilter.yaml).
+*/ -}}
+{{- if .Values.console.enabled }}
+{{- $name := printf "%s-console" (include "dognauts-starrocks.clusterName" .) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+data:
+  # ${...} подставляет при старте скрипт envsubst образа nginx (только заданные переменные окружения);
+  # $host, $1 и прочие переменные nginx он не трогает
+  default.conf.template: |
+    server {
+      listen 8080;
+      location / {
+        proxy_pass http://{{ include "dognauts-starrocks.feService" . }}:8030;
+        proxy_http_version 1.1;
+        proxy_set_header Authorization "Basic ${STARROCKS_CONSOLE_BASIC}";
+        # без сжатия: sub_filter работает только с несжатым ответом
+        proxy_set_header Accept-Encoding "";
+        proxy_hide_header WWW-Authenticate;
+        proxy_redirect / ${CONSOLE_PREFIX}/;
+
+        sub_filter_types text/css application/javascript text/javascript application/json;
+        sub_filter_once off;
+        sub_filter 'href="/'   'href="${CONSOLE_PREFIX}/';
+        sub_filter 'src="/'    'src="${CONSOLE_PREFIX}/';
+        sub_filter 'action="/' 'action="${CONSOLE_PREFIX}/';
+        sub_filter "href='/"   "href='${CONSOLE_PREFIX}/";
+        sub_filter "src='/"    "src='${CONSOLE_PREFIX}/";
+        sub_filter "url('/"    "url('${CONSOLE_PREFIX}/";
+        sub_filter 'url("/'    'url("${CONSOLE_PREFIX}/';
+        sub_filter "url(/"     "url(${CONSOLE_PREFIX}/";
+        sub_filter '"/api/'    '"${CONSOLE_PREFIX}/api/';
+        sub_filter "'/api/"    "'${CONSOLE_PREFIX}/api/";
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dognauts-starrocks.consoleSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dognauts-starrocks.consoleSelectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ .Values.console | toJson | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "dognauts-starrocks.clusterName" . }}-console
+      {{- with .Values.console.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.starrocks.starrocksCluster.componentValues.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: nginx
+          image: "{{ .Values.console.image.repository }}:{{ .Values.console.image.tag }}"
+          # команда задана явно: webhook Bank-Vaults оборачивает её, не обращаясь к реестру образов
+          command: ["/docker-entrypoint.sh"]
+          args: ["nginx", "-g", "daemon off;"]
+          {{- with .Values.console.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: CONSOLE_PREFIX
+              value: {{ include "dognauts-starrocks.appPrefix" . | quote }}
+            - name: STARROCKS_CONSOLE_BASIC
+              value: {{ include "dognauts-starrocks.vaultRef" (dict "path" .Values.vault.path "key" "STARROCKS_CONSOLE_BASIC") }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+          resources:
+            {{- toYaml .Values.console.resources | nindent 12 }}
+          volumeMounts:
+            - name: templates
+              mountPath: /etc/nginx/templates
+              readOnly: true
+            - name: conf
+              mountPath: /etc/nginx/conf.d
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: templates
+          configMap:
+            name: {{ $name }}
+        - name: conf
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    {{- include "dognauts-starrocks.consoleSelectorLabels" . | nindent 4 }}
+{{- end }}

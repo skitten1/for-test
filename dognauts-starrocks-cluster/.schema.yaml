@@ -1,0 +1,28 @@
+# .schema.yaml
+# yaml-language-server: $schema=https://github.com/losisin/helm-values-schema-json/raw/refs/heads/main/config.schema.json
+
+values:
+  - values.yaml
+
+draft: 2020
+indent: 4
+output: values.schema.json
+
+bundle: true
+bundleRoot: ""
+bundleWithoutID: true # uh
+
+k8sSchemaURL: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .K8sSchemaVersion }}/
+k8sSchemaVersion: "v1.28.5"
+
+useHelmDocs: false
+
+noAdditionalProperties: false
+noDefaultGlobal: false
+
+# schemaRoot:
+#   id: https://example.com/schema
+#   title: Helm Values Schema
+#   description: Schema for Helm values
+#   additionalProperties: true
+

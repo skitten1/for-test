@@ -1,0 +1,34 @@
+{{- /*
+Пункт меню платформы — в том же формате, что и у остальных чартов.
+Публикуется через CR ProjectComponent (templates/project-component.yaml).
+slug — в старом формате фронтенда "<компонент>-<релиз>" (один сегмент пути).
+TODO: при переходе фронта на новые пути — "<релиз>/starrocks" (README nested-релизов).
+*/ -}}
+{{- define "dognauts-starrocks.projectComponentLinks" }}
+starrocks:
+  slug: "starrocks-{{ .Release.Name }}"
+  parent: starrocks
+  type: "component"
+  labels:
+    en: "{{ .Release.Name }}: FE console"
+    ru: "{{ .Release.Name }}: консоль FE"
+  link: {{ printf "%s/" (include "dognauts-starrocks.appPrefix" .) | quote }}
+  parentIcon: "PHN2ZyB3aWR0aD0nMjQnIGhlaWdodD0nMjQnIHZpZXdCb3g9JzAgMCAyNCAyNCcgZmlsbD0nbm9uZScgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJz4gPHBhdGggZD0nTTEyIDIuNzVMMTQuNiA4LjNMMjAuNiA5LjA1TDE2LjIgMTMuMkwxNy4zIDE5LjE1TDEyIDE2LjI1TDYuNyAxOS4xNUw3LjggMTMuMkwzLjQgOS4wNUw5LjQgOC4zTDEyIDIuNzVaJyBzdHJva2U9J2N1cnJlbnRDb2xvcicgc3Ryb2tlLXdpZHRoPScxLjUnIHN0cm9rZS1saW5lam9pbj0ncm91bmQnLz4gPHBhdGggZD0nTTUgMjEuMjVIMTknIHN0cm9rZT0nY3VycmVudENvbG9yJyBzdHJva2Utd2lkdGg9JzEuNScgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJy8+IDwvc3ZnPg=="
+  parentLabels:
+    en: "StarRocks"
+    ru: "StarRocks"
+{{- if .Values.adminUi.enabled }}
+starrocks-admin:
+  slug: "starrocks-admin-{{ .Release.Name }}"
+  parent: starrocks
+  type: "component"
+  labels:
+    en: "{{ .Release.Name }}: Admin UI"
+    ru: "{{ .Release.Name }}: Admin UI"
+  link: {{ printf "%s/" (include "dognauts-starrocks.adminUiPrefix" .) | quote }}
+  parentIcon: "PHN2ZyB3aWR0aD0nMjQnIGhlaWdodD0nMjQnIHZpZXdCb3g9JzAgMCAyNCAyNCcgZmlsbD0nbm9uZScgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJz4gPHBhdGggZD0nTTEyIDIuNzVMMTQuNiA4LjNMMjAuNiA5LjA1TDE2LjIgMTMuMkwxNy4zIDE5LjE1TDEyIDE2LjI1TDYuNyAxOS4xNUw3LjggMTMuMkwzLjQgOS4wNUw5LjQgOC4zTDEyIDIuNzVaJyBzdHJva2U9J2N1cnJlbnRDb2xvcicgc3Ryb2tlLXdpZHRoPScxLjUnIHN0cm9rZS1saW5lam9pbj0ncm91bmQnLz4gPHBhdGggZD0nTTUgMjEuMjVIMTknIHN0cm9rZT0nY3VycmVudENvbG9yJyBzdHJva2Utd2lkdGg9JzEuNScgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJy8+IDwvc3ZnPg=="
+  parentLabels:
+    en: "StarRocks"
+    ru: "StarRocks"
+{{- end }}
+{{- end }}

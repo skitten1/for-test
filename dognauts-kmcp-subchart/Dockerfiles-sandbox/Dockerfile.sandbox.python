@@ -1,0 +1,16 @@
+FROM harbor.neoflex.ru/dognauts/python:3.10-slim-bookworm
+
+# Список библиотек — под ваши реальные сценарии использования агентом
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir \
+        numpy \
+        pandas \
+        requests
+
+RUN groupadd -r -g 64535 sandbox 2>/dev/null || true \
+    && useradd -r -g sandbox -u 64535 sandbox 2>/dev/null || true
+
+RUN mkdir -p /tmp/.sandbox-venv/bin \
+    && ln -s /usr/local/bin/python /tmp/.sandbox-venv/bin/python
+
+USER 64535

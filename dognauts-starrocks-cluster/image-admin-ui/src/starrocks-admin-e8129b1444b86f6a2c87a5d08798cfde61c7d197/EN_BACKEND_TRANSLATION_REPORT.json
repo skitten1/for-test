@@ -1,0 +1,122 @@
+{
+  "base_commit": "e8129b1444b86f6a2c87a5d08798cfde61c7d197",
+  "changed_files": [
+    {
+      "path": "middleware/auth.rs",
+      "literal_changes": 1,
+      "han_before": 36,
+      "han_after": 17
+    },
+    {
+      "path": "services/overview_service.rs",
+      "literal_changes": 15,
+      "han_before": 92,
+      "han_after": 0
+    },
+    {
+      "path": "services/data_statistics_service.rs",
+      "literal_changes": 1,
+      "han_before": 3,
+      "han_after": 0
+    },
+    {
+      "path": "services/system_function_service.rs",
+      "literal_changes": 9,
+      "han_before": 55,
+      "han_after": 4
+    },
+    {
+      "path": "handlers/system_function.rs",
+      "literal_changes": 2,
+      "han_before": 16,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/mod.rs",
+      "literal_changes": 2,
+      "han_before": 40,
+      "han_after": 28
+    },
+    {
+      "path": "services/profile_analyzer/parser/composer.rs",
+      "literal_changes": 1,
+      "han_before": 24,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rule_engine.rs",
+      "literal_changes": 9,
+      "han_before": 109,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/sort.rs",
+      "literal_changes": 34,
+      "han_before": 405,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/aggregate.rs",
+      "literal_changes": 36,
+      "han_before": 518,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/scan.rs",
+      "literal_changes": 89,
+      "han_before": 1487,
+      "han_after": 174
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/project.rs",
+      "literal_changes": 11,
+      "han_before": 119,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/common.rs",
+      "literal_changes": 37,
+      "han_before": 466,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/fragment.rs",
+      "literal_changes": 13,
+      "han_before": 138,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/sink.rs",
+      "literal_changes": 16,
+      "han_before": 188,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/query.rs",
+      "literal_changes": 56,
+      "han_before": 515,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/exchange.rs",
+      "literal_changes": 18,
+      "han_before": 233,
+      "han_after": 0
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/mod.rs",
+      "literal_changes": 60,
+      "han_before": 1001,
+      "han_after": 91
+    },
+    {
+      "path": "services/profile_analyzer/analyzer/rules/join.rs",
+      "literal_changes": 62,
+      "han_before": 766,
+      "han_after": 0
+    }
+  ],
+  "changed_count": 19,
+  "remaining_han_string_literals": [],
+  "remaining_literal_count": 0
+}

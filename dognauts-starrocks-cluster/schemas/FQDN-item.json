@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["domains"],
+  "properties": {
+    "domains": {
+      "type": "array",
+      "description": "Allowed domains or patterns list",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "description": "Domain or pattern (e.g. *.google.com)"
+      }
+    },
+    "ports": {
+      "type": "array",
+      "description": "Allowed ports list",
+      "items": {
+        "type": "object",
+        "required": ["port"],
+        "properties": {
+          "port": {
+            "type": "integer",
+            "description": "Port number"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": ["TCP", "UDP", "ANY"],
+            "default": "TCP",
+            "description": "Network protocol"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+diff --git a/pkg/k8sutils/templates/pod/spec.go b/pkg/k8sutils/templates/pod/spec.go
+index 8a220bc..efae697 100644
+--- a/pkg/k8sutils/templates/pod/spec.go
++++ b/pkg/k8sutils/templates/pod/spec.go
+@@ -283,7 +283,9 @@ func Spec(spec v1.SpecInterface, container corev1.Container, volumes []corev1.Vo
+ 		NodeSelector:                  spec.GetNodeSelector(),
+ 		HostAliases:                   spec.GetHostAliases(),
+ 		SchedulerName:                 spec.GetSchedulerName(),
+-		AutomountServiceAccountToken:  func() *bool { b := false; return &b }(),
++		// Dognauts: mount the SA token when a ServiceAccount is set explicitly — the Vault
++		// webhook (Bank-Vaults) logs in with it. Without an explicit SA, upstream behaviour (no token).
++		AutomountServiceAccountToken: func() *bool { b := spec.GetServiceAccount() != ""; return &b }(),
+ 		ShareProcessNamespace:         spec.GetShareProcessNamespace(),
+ 	}
+ 	return podSpec
+@@ -308,6 +310,8 @@ func PodSecurityContext(spec v1.SpecInterface) *corev1.PodSecurityContext {
+ 		FSGroupChangePolicy: &onRootMismatch,
+ 		FSGroup:             fsGroup,
+ 		Sysctls:             spec.GetSysctls(),
++		// Dognauts: platform policy requires a seccomp profile on every pod
++		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+ 	}
+ 	return sc
+ }
+@@ -328,6 +332,8 @@ func ContainerSecurityContext(spec v1.SpecInterface) *corev1.SecurityContext {
+ 		ReadOnlyRootFilesystem:   spec.IsReadOnlyRootFilesystem(),
+ 		// set additional Capabilities
+ 		Capabilities: spec.GetCapabilities(),
++		// Dognauts: platform policy requires a seccomp profile on every container
++		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+ 	}
+ }
+ 

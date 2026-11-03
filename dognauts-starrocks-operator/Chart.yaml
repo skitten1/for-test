@@ -1,0 +1,14 @@
+apiVersion: v2
+name: dognauts-starrocks-operator
+description: Dognauts platform wrapper for StarRocks operator (controller + CRDs)
+type: application
+version: 0.1.0
+appVersion: "v1.11.8"
+dependencies:
+  # upstream-чарт operator из starrocks-kubernetes-operator; CRD лежат в его каталоге crds/
+  - name: operator
+    version: "1.11.8"
+    repository: "oci://harbor.neoflex.ru/dognauts-helm/starrocks"
+  - name: dognauts-common-chart
+    version: ">=0.1.0 <1.0.0"
+    repository: "oci://harbor.neoflex.ru/dognauts-helm"

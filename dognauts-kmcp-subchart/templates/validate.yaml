@@ -1,0 +1,12 @@
+{{- $anchorName := .Values.projectAnchor.name -}}
+{{- $anchorNs := .Values.projectAnchor.namespace -}}
+{{- $anchor := lookup "dognauts.neoflex.ru/v1" "ProjectAnchor" $anchorNs $anchorName -}}
+{{- if $anchor -}}
+{{- $existingLink := index (($anchor.spec).links | default dict) "dognauts-kmcp" -}}
+{{- if $existingLink -}}
+{{- $existingRelease := $existingLink.nestedReleaseName | default "" -}}
+{{- if and $existingRelease (ne $existingRelease .Release.Name) -}}
+{{- fail (printf "ProjectAnchor '%s' in namespace '%s' already has a kmcp link owned by release '%s'. dognauts-kmcp-subchart does not support multiple installs per project — it provisions shared MCP-server infrastructure for the whole project." $anchorName $anchorNs $existingRelease) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

@@ -1,0 +1,186 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "global": {
+            "type": "object",
+            "properties": {
+                "chartRepository": {
+                    "type": "object",
+                    "required": [
+                        "url",
+                        "branch",
+                        "username"
+                    ],
+                    "properties": {
+                        "azureRepos": {
+                            "description": "For Azure DevOps Repos only",
+                            "default": false,
+                            "type": "boolean"
+                        },
+                        "branch": {
+                            "description": "Git branch to store charts for deploy",
+                            "type": "string"
+                        },
+                        "url": {
+                            "description": "Git repo URL to store charts for deploy",
+                            "type": "string"
+                        },
+                        "username": {
+                            "description": "Git username to store charts for deploy",
+                            "type": "string"
+                        }
+                    }
+                },
+                "vaultExternal": {
+                    "description": "For external Vault only",
+                    "type": "boolean"
+                }
+            }
+        },
+        "kmcp-helm-service": {
+            "type": "object",
+            "required": [
+                "gitChartRepoToken"
+            ],
+            "properties": {
+                "gitChartRepoToken": {
+                    "description": "Git token to get charts for deploy",
+                    "type": "string"
+                }
+            }
+        },
+        "kmcp-template-service": {
+            "type": "object",
+            "required": [
+                "gitChartRepoToken",
+                "gitMetaRepoToken"
+            ],
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "properties": {
+                        "git": {
+                            "type": "object",
+                            "properties": {
+                                "metarepository": {
+                                    "type": "object",
+                                    "required": [
+                                        "username"
+                                    ],
+                                    "properties": {
+                                        "azureRepos": {
+                                            "description": "For Azure DevOps Repos only",
+                                            "default": false,
+                                            "type": "boolean"
+                                        },
+                                        "username": {
+                                            "description": "Git username to get scaffold-templates from",
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "gitChartRepoToken": {
+                    "description": "Git token to store charts for deploy",
+                    "type": "string"
+                },
+                "gitMetaRepoToken": {
+                    "description": "Git token to get scaffold-templates",
+                    "type": "string"
+                }
+            }
+        },
+        "networkPolicy": {
+            "type": "object",
+            "properties": {
+                "policies": {
+                    "type": "object",
+                    "properties": {
+                        "kmcp-mcp-servers": {
+                            "type": "object",
+                            "properties": {
+                                "egress": {
+                                    "type": "object",
+                                    "properties": {
+                                        "extra": {
+                                            "type": "object",
+                                            "properties": {
+                                                "toFQDNs": {
+                                                    "description": "List of destination domains' names or patterns for network policy.",
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "schemas/FQDN-item.json"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "projectAnchor": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "readOnly": true,
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "$defs": {
+        "FQDN-item.json": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "schemas/FQDN-item.json",
+            "type": "object",
+            "required": [
+                "domains"
+            ],
+            "properties": {
+                "domains": {
+                    "description": "Allowed domains or patterns list",
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "description": "Domain or pattern (e.g. *.google.com)",
+                        "type": "string"
+                    }
+                },
+                "ports": {
+                    "description": "Allowed ports list",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "port"
+                        ],
+                        "properties": {
+                            "port": {
+                                "description": "Port number",
+                                "type": "integer"
+                            },
+                            "protocol": {
+                                "description": "Network protocol",
+                                "default": "TCP",
+                                "type": "string",
+                                "enum": [
+                                    "TCP",
+                                    "UDP",
+                                    "ANY"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

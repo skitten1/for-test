@@ -1,0 +1,174 @@
+{{- /*
+Init-джоба StarRocks (post-install, post-upgrade). Идемпотентна.
+ 1. ждёт FE и задаёт пароль root (MYSQL_PWD из Vault);
+ 2. создаёт служебных пользователей: консоли (platform_console) и Admin UI (platform_admin_ui);
+ 3. подключает каталог Iceberg (Lakekeeper), если он включён в values.
+Работает с sidecar Istio: протокол MySQL (первым говорит сервер) несовместим с подключениями
+из-за пределов mesh к подам в mesh. В конце джоба останавливает sidecar (/quitquitquit).
+*/ -}}
+{{- if .Values.init.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-starrocks-init
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: starrocks-init
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      restartPolicy: Never
+      # секреты из Vault: SA с именем *-vault-jobs (vault-jobs-serviceaccount.yaml)
+      serviceAccountName: {{ include "dognauts-starrocks.vaultJobsServiceAccount" . }}
+      {{- with .Values.init.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.starrocks.starrocksCluster.componentValues.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      containers:
+        - name: init
+          image: "{{ .Values.init.image.repository }}:{{ .Values.init.image.tag }}"
+          {{- with .Values.init.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.init.resources | nindent 12 }}
+          env:
+            - name: HOME
+              value: /tmp
+            # секреты из Vault (подставляет webhook Bank-Vaults)
+            - name: MYSQL_PWD
+              value: {{ include "dognauts-starrocks.vaultRef" (dict "path" .Values.vault.path "key" "MYSQL_PWD") }}
+            - name: STARROCKS_CONSOLE_PASSWORD
+              value: {{ include "dognauts-starrocks.vaultRef" (dict "path" .Values.vault.path "key" "STARROCKS_CONSOLE_PASSWORD") }}
+            {{- if .Values.adminUi.enabled }}
+            - name: STARROCKS_ADMIN_UI_SR_PASSWORD
+              value: {{ include "dognauts-starrocks.vaultRef" (dict "path" .Values.vault.adminUiPath "key" "STARROCKS_ADMIN_UI_SR_PASSWORD") }}
+            {{- end }}
+            - name: FE_HOST
+              value: {{ include "dognauts-starrocks.feService" . }}
+            - name: CONSOLE_USER
+              value: {{ .Values.console.username | quote }}
+            - name: CONSOLE_ROLES
+              value: {{ join ", " .Values.console.roles | quote }}
+            - name: ADMIN_UI_ENABLED
+              value: {{ .Values.adminUi.enabled | quote }}
+            - name: ADMIN_UI_USER
+              value: {{ .Values.adminUi.starrocksUser | quote }}
+            - name: ADMIN_UI_ROLES
+              value: {{ join ", " .Values.adminUi.starrocksRoles | quote }}
+            - name: CATALOG_ENABLED
+              value: {{ .Values.lakekeeperCatalog.enabled | quote }}
+            - name: CATALOG_NAME
+              value: {{ .Values.lakekeeperCatalog.name | quote }}
+            - name: CATALOG_URI
+              value: {{ .Values.lakekeeperCatalog.uri | quote }}
+            - name: CATALOG_WAREHOUSE
+              value: {{ .Values.lakekeeperCatalog.warehouse | quote }}
+            - name: S3_ENDPOINT
+              value: {{ .Values.s3.endpoint | quote }}
+            - name: S3_REGION
+              value: {{ .Values.s3.region | quote }}
+            - name: S3_PATH_STYLE
+              value: {{ .Values.s3.pathStyleAccess | quote }}
+            {{- with .Values.s3.credentialsSecret }}
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.s3.accessKeyKey }}
+                  optional: true
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.s3.secretKeyKey }}
+                  optional: true
+            {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -u
+              {{- include "dognauts-starrocks.stopSidecar" . | nindent 14 }}
+
+              # Секреты из Vault (подставлены webhook в переменные окружения)
+              ROOT_PASSWORD="${MYSQL_PWD:?MYSQL_PWD from Vault is missing}"
+              # пароль передаём через MYSQL_PWD, чтобы он не попал в список процессов
+              sql() { MYSQL_PWD="$1" mysql --connect-timeout 10 -h "$FE_HOST" -P 9030 -u root \
+                        --skip-column-names --batch -e "$2" 2>&1; }
+              root_sql() { sql "$ROOT_PASSWORD" "$1"; }
+
+              echo "Waiting for StarRocks FE at $FE_HOST:9030 ..."
+              ROOT_OK=""
+              for i in $(seq 1 {{ .Values.init.waitAttempts }}); do
+                if OUT=$(root_sql "SELECT 1"); then
+                  echo "Root password is already set"; ROOT_OK=1; break
+                fi
+                if OUT=$(sql "" "SET PASSWORD = PASSWORD('$ROOT_PASSWORD')"); then
+                  echo "Root password has been set"; ROOT_OK=1; break
+                fi
+                echo "  attempt $i: $(echo "$OUT" | head -c 200)"
+                sleep {{ .Values.init.waitInterval }}
+              done
+              if [ -z "$ROOT_OK" ]; then
+                echo "StarRocks FE is not reachable or root password could not be set."
+                echo "If FE answers 'Access denied' both with and without the password, FE was started"
+                echo "with metadata from a previous installation and a different root password."
+                exit 1
+              fi
+
+              # ensure_user <пользователь> <пароль> <роли через запятую>
+              ensure_user() {
+                local u="'$1'@'%'"
+                echo "Ensuring StarRocks user $1 ..."
+                root_sql "CREATE USER IF NOT EXISTS $u IDENTIFIED BY '$2'" || exit 1
+                root_sql "ALTER USER $u IDENTIFIED BY '$2'" || exit 1
+                # повторная выдача уже выданной роли может вернуть ошибку — это не страшно
+                OUT=$(root_sql "GRANT $3 TO USER $u") || echo "  grant: $(echo "$OUT" | head -c 200)"
+                root_sql "SET DEFAULT ROLE ALL TO $u" || exit 1
+              }
+
+              ensure_user "$CONSOLE_USER" "${STARROCKS_CONSOLE_PASSWORD:?missing in Vault}" "$CONSOLE_ROLES"
+              if [ "$ADMIN_UI_ENABLED" = "true" ]; then
+                ensure_user "$ADMIN_UI_USER" "${STARROCKS_ADMIN_UI_SR_PASSWORD:?missing in Vault}" "$ADMIN_UI_ROLES"
+              fi
+
+              # Каталог Iceberg (Lakekeeper). Создаётся один раз; изменения параметров — вручную (ALTER CATALOG)
+              if [ "$CATALOG_ENABLED" = "true" ]; then
+                if [ -z "$CATALOG_URI" ] || [ -z "$CATALOG_WAREHOUSE" ]; then
+                  echo "Catalog is enabled, but uri/warehouse are not set — skipping"
+                else
+                  echo "Ensuring Iceberg catalog $CATALOG_NAME ..."
+                  root_sql "CREATE EXTERNAL CATALOG IF NOT EXISTS \`$CATALOG_NAME\` PROPERTIES (
+                    'type' = 'iceberg',
+                    'iceberg.catalog.type' = 'rest',
+                    'iceberg.catalog.uri' = '$CATALOG_URI',
+                    'iceberg.catalog.warehouse' = '$CATALOG_WAREHOUSE',
+                    'aws.s3.endpoint' = '$S3_ENDPOINT',
+                    'aws.s3.region' = '$S3_REGION',
+                    'aws.s3.enable_path_style_access' = '$S3_PATH_STYLE',
+                    'iceberg.catalog.vended-credentials-enabled' = 'true'
+                  )" || exit 1
+                fi
+              fi
+              echo "Done"
+{{- end }}

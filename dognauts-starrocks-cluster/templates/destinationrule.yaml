@@ -1,0 +1,24 @@
+{{- /*
+Клиенты в mesh (ноутбуки, Airflow, Lakekeeper, другие FE) подключаются к порту 9030 FE
+открытым TCP, без mTLS: на стороне FE этот порт в режиме DISABLE (peer-authentication.yaml),
+потому что MySQL-протокол несовместим с ожиданием TLS от клиента.
+*/ -}}
+{{- $ns := .Release.Namespace }}
+{{- $domain := .Values.clusterDomain }}
+{{- range $svc := list (include "dognauts-starrocks.feService" .) (printf "%s-fe-search" (include "dognauts-starrocks.clusterName" .)) }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $svc }}
+  labels:
+    {{- include "dognauts-starrocks.labels" $ | nindent 4 }}
+spec:
+  host: {{ printf "%s.%s.svc.%s" $svc $ns $domain | quote }}
+  trafficPolicy:
+    portLevelSettings:
+      - port:
+          number: 9030
+        tls:
+          mode: DISABLE
+{{- end }}

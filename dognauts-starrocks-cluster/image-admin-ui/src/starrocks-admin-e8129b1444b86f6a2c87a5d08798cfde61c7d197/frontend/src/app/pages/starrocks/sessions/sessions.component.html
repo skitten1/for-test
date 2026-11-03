@@ -1,0 +1,112 @@
+<div class="row">
+  <div class="col-12">
+    <nb-card>
+      <nb-card-body>
+        <!-- Combined Header and Filter Bar -->
+        <div class="session-header-filters mb-3" *ngIf="!loading">
+          <div class="header-filters-content">
+            <!-- Left: Title and Cluster Info -->
+            <div class="header-left">
+              <h5 class="mb-0">Session Management</h5>
+              <span class="text-hint">|</span>
+              <span class="text-hint" style="font-size: 13px;">
+                Cluster: <strong>{{ activeCluster?.name || 'Not selected' }}</strong>
+              </span>
+            </div>
+            
+            <!-- Center: Filter Options -->
+            <div class="filter-options">
+              <nb-checkbox 
+                [(ngModel)]="sessionFilter.sleepOnly"
+                (checkedChange)="applySessionFilter()"
+                class="filter-checkbox">
+                <span class="text-hint">Show idle connections only</span>
+              </nb-checkbox>
+              <nb-checkbox 
+                [(ngModel)]="sessionFilter.slowOnly"
+                (checkedChange)="applySessionFilter()"
+                class="filter-checkbox">
+                <span class="text-hint">Show slow sessions only (≥1 minute)</span>
+              </nb-checkbox>
+              <button 
+                *ngIf="sessionFilter.sleepOnly || sessionFilter.slowOnly"
+                nbButton 
+                ghost 
+                size="tiny"
+                status="basic"
+                (click)="resetSessionFilter()"
+                class="clear-filter-btn">
+                <span class="text-hint">Clear Filters</span>
+              </button>
+            </div>
+            
+            <!-- Right: Actions and Refresh Controls -->
+            <div class="header-right">
+              <button 
+                nbButton 
+                status="warning" 
+                size="small"
+                (click)="clearSleepingConnections()"
+                [disabled]="loading">
+                <nb-icon icon="power-outline"></nb-icon>
+                Clear Idle Connections
+              </button>
+              <button 
+                nbButton 
+                status="danger" 
+                size="small"
+                (click)="batchKillAllSessions()"
+                [disabled]="loading">
+                <nb-icon icon="trash-2-outline"></nb-icon>
+                Terminate All Displayed
+              </button>
+              
+              <div class="refresh-controls">
+                <button nbButton status="primary" size="small" (click)="refresh()" [disabled]="loading || !clusterId">
+                  <nb-icon icon="refresh-outline"></nb-icon>
+                  Refresh
+                </button>
+                
+                <div class="refresh-interval-selector">
+                  <nb-select 
+                    [(selected)]="selectedRefreshInterval" 
+                    size="small" 
+                    placeholder="Auto Refresh"
+                    (selectedChange)="onRefreshIntervalChange($event)"
+                    [disabled]="!clusterId"
+                    class="refresh-interval-select">
+                    <nb-option *ngFor="let option of refreshIntervalOptions" [value]="option.value">
+                      {{ option.label }}
+                    </nb-option>
+                  </nb-select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="loading" class="text-center py-4">
+          <nb-spinner size="large" status="primary"></nb-spinner>
+          <p class="mt-3 text-muted">Loading sessions...</p>
+        </div>
+
+        <div *ngIf="!loading && sessions.length === 0">
+          <nb-alert status="info">
+            <p class="mb-0">
+              <nb-icon icon="info-outline"></nb-icon>
+              No active sessions found.
+            </p>
+          </nb-alert>
+        </div>
+
+        <ng2-smart-table
+          *ngIf="!loading && sessions.length > 0"
+          [settings]="settings"
+          [source]="source"
+          (deleteConfirm)="onDeleteConfirm($event)"
+        ></ng2-smart-table>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>
+

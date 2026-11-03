@@ -1,0 +1,764 @@
+<div class="row">
+  <div class="col-12">
+    <nb-card>
+      <nb-card-header>
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0">Materialized Views</h5>
+            <span class="text-hint">|</span>
+            <span class="text-hint" style="font-size: 13px;">
+              Cluster: <strong>{{ activeCluster?.name || 'Not selected' }}</strong>
+            </span>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button
+              nbButton
+              status="primary"
+              size="small"
+              (click)="loadMaterializedViews()"
+              [disabled]="loading || !clusterId"
+            >
+              <nb-icon icon="refresh-outline"></nb-icon>
+              Refresh
+            </button>
+            <button
+              nbButton
+              status="success"
+              size="small"
+              (click)="openCreateDialog()"
+              [disabled]="!clusterId"
+            >
+              <nb-icon icon="plus-outline"></nb-icon>
+              Create
+            </button>
+          </div>
+        </div>
+      </nb-card-header>
+
+      <nb-card-body>
+        <!-- Basic Filters -->
+        <div class="filter-section">
+          <div class="row">
+            <div class="col-md-3 col-sm-6 mb-2">
+              <input
+                nbInput
+                fullWidth
+                type="text"
+                placeholder="Search materialized view name or database..."
+                [(ngModel)]="searchText"
+                (ngModelChange)="onSearch()"
+              />
+            </div>
+            <div class="col-md-2 col-sm-6 mb-2">
+              <nb-select
+                fullWidth
+                placeholder="selectDatabase"
+                [(selected)]="selectedDatabase"
+                (selectedChange)="applyFilters()"
+              >
+                <nb-option value="all">All Databases</nb-option>
+                <nb-option *ngFor="let db of databases" [value]="db">
+                  {{ db }}
+                </nb-option>
+              </nb-select>
+            </div>
+            <div class="col-md-2 col-sm-6 mb-2">
+              <nb-select
+                fullWidth
+                placeholder="Refresh Type"
+                [(selected)]="selectedRefreshType"
+                (selectedChange)="applyFilters()"
+              >
+                <nb-option
+                  *ngFor="let option of refreshTypeOptions"
+                  [value]="option.value"
+                >
+                  {{ option.label }}
+                </nb-option>
+              </nb-select>
+            </div>
+            <div class="col-md-2 col-sm-6 mb-2">
+              <nb-select
+                fullWidth
+                placeholder="Status"
+                [(selected)]="selectedActiveState"
+                (selectedChange)="applyFilters()"
+              >
+                <nb-option
+                  *ngFor="let option of activeStateOptions"
+                  [value]="option.value"
+                >
+                  {{ option.label }}
+                </nb-option>
+              </nb-select>
+            </div>
+            <div class="col-md-2 col-sm-6 mb-2">
+              <nb-select
+                fullWidth
+                placeholder="Refresh Status"
+                [(selected)]="selectedRefreshState"
+                (selectedChange)="applyFilters()"
+              >
+                <nb-option
+                  *ngFor="let option of refreshStateOptions"
+                  [value]="option.value"
+                >
+                  {{ option.label }}
+                </nb-option>
+              </nb-select>
+            </div>
+            <div class="col-md-1 col-sm-12 mb-2">
+              <button
+                nbButton
+                fullWidth
+                status="info"
+                size="small"
+                (click)="toggleAdvancedFilters()"
+              >
+                <nb-icon
+                  [icon]="showAdvancedFilters ? 'arrow-up-outline' : 'arrow-down-outline'"
+                ></nb-icon>
+                Advanced Filters
+              </button>
+            </div>
+          </div>
+
+          <!-- Advanced Filters -->
+          <div *ngIf="showAdvancedFilters" class="advanced-filters mt-3">
+            <nb-card accent="info">
+              <nb-card-header>Advanced Filters</nb-card-header>
+              <nb-card-body>
+                <div class="row">
+                  <div class="col-md-3 col-sm-6 mb-2">
+                    <label class="label">Refresh Start Time</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="datetime-local"
+                      [(ngModel)]="refreshTimeStart"
+                      (ngModelChange)="applyFilters()"
+                    />
+                  </div>
+                  <div class="col-md-3 col-sm-6 mb-2">
+                    <label class="label">Refresh End Time</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="datetime-local"
+                      [(ngModel)]="refreshTimeEnd"
+                      (ngModelChange)="applyFilters()"
+                    />
+                  </div>
+                  <div class="col-md-2 col-sm-6 mb-2">
+                    <label class="label">minimumRows</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="number"
+                      placeholder="minimumRows"
+                      [(ngModel)]="rowCountMin"
+                      (ngModelChange)="applyFilters()"
+                    />
+                  </div>
+                  <div class="col-md-2 col-sm-6 mb-2">
+                    <label class="label">maximumRows</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="number"
+                      placeholder="maximumRows"
+                      [(ngModel)]="rowCountMax"
+                      (ngModelChange)="applyFilters()"
+                    />
+                  </div>
+                  <div class="col-md-2 col-sm-6 mb-2">
+                    <label class="label">Partition Type</label>
+                    <nb-select
+                      fullWidth
+                      [(selected)]="selectedPartitionType"
+                      (selectedChange)="applyFilters()"
+                    >
+                      <nb-option
+                        *ngFor="let option of partitionTypeOptions"
+                        [value]="option.value"
+                      >
+                        {{ option.label }}
+                      </nb-option>
+                    </nb-select>
+                  </div>
+                </div>
+              </nb-card-body>
+            </nb-card>
+          </div>
+
+          <!-- Active Filters Display -->
+          <div *ngIf="getActiveFiltersCount() > 0" class="active-filters mt-2">
+            <span class="me-2">Current Filters:</span>
+            <nb-badge
+              *ngIf="searchText"
+              status="info"
+              text="Search: {{ searchText }}"
+              class="me-2"
+            ></nb-badge>
+            <nb-badge
+              *ngIf="selectedDatabase !== 'all'"
+              status="info"
+              text="Database: {{ selectedDatabase }}"
+              class="me-2"
+            ></nb-badge>
+            <nb-badge
+              *ngIf="selectedRefreshType !== 'all'"
+              status="info"
+              text="Type: {{ selectedRefreshType }}"
+              class="me-2"
+            ></nb-badge>
+            <nb-badge
+              *ngIf="selectedActiveState !== 'all'"
+              status="info"
+              text="Status: {{ selectedActiveState }}"
+              class="me-2"
+            ></nb-badge>
+            <nb-badge
+              *ngIf="selectedRefreshState !== 'all'"
+              status="info"
+              text="Refresh Status: {{ selectedRefreshState }}"
+              class="me-2"
+            ></nb-badge>
+            <button
+              nbButton
+              size="tiny"
+              status="danger"
+              (click)="clearAllFilters()"
+            >
+              <nb-icon icon="close-outline"></nb-icon>
+              Clear All
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div *ngIf="loading" class="text-center mt-3">
+          <nb-spinner status="primary"></nb-spinner>
+        </div>
+
+        <!-- Data Table -->
+        <ng2-smart-table
+          *ngIf="!loading"
+          [settings]="settings"
+          [source]="source"
+          (edit)="onEdit($event)"
+          (delete)="onDelete($event)"
+        >
+        </ng2-smart-table>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>
+
+<!-- Create Dialog -->
+<ng-template #createDialog let-data let-ref="dialogRef">
+  <nb-card>
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center">
+        <h5>Create Materialized View</h5>
+        <button nbButton ghost (click)="closeCreateDialog()">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+    <nb-card-body>
+      <nb-accordion>
+        <nb-accordion-item>
+          <nb-accordion-item-header>SQL Template Examples (Click to View)</nb-accordion-item-header>
+          <nb-accordion-item-body>
+            <div class="template-section">
+              <h6>Asynchronous Materialized View (Manual Refresh)</h6>
+              <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_manual
+DISTRIBUTED BY HASH(order_date) BUCKETS 10
+REFRESH MANUAL
+AS SELECT 
+    order_date,
+    SUM(amount) as daily_sales,
+    COUNT(*) as order_count
+FROM orders
+GROUP BY order_date;</pre>
+
+              <h6>Asynchronous Materialized View (Automatic Refresh)</h6>
+              <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_auto
+DISTRIBUTED BY HASH(order_date) BUCKETS 10
+REFRESH ASYNC EVERY (INTERVAL 1 HOUR)
+AS SELECT 
+    order_date,
+    SUM(amount) as daily_sales
+FROM orders
+GROUP BY order_date;</pre>
+
+              <h6>Synchronous Materialized View (ROLLUP, refreshed automatically on load)</h6>
+              <pre class="code-template">CREATE MATERIALIZED VIEW mv_sync_rollup
+AS SELECT 
+    customer_id,
+    order_date,
+    SUM(amount) as total_amount,
+    COUNT(*) as order_count
+FROM orders
+GROUP BY customer_id, order_date;</pre>
+            </div>
+          </nb-accordion-item-body>
+        </nb-accordion-item>
+      </nb-accordion>
+
+      <div class="form-group mt-3">
+        <label class="label">CREATE MATERIALIZED VIEW SQL Statement</label>
+        <textarea
+          nbInput
+          fullWidth
+          rows="12"
+          placeholder="Enter a complete CREATE MATERIALIZED VIEW statement..."
+          [(ngModel)]="createSQL"
+          [disabled]="creating"
+        ></textarea>
+        <small class="form-text text-muted">
+          <nb-icon icon="bulb-outline"></nb-icon>
+          Enter a complete CREATE MATERIALIZED VIEW SQL statement. Asynchronous MVs require DISTRIBUTED BY; synchronous MVs (ROLLUP) do not.
+        </small>
+      </div>
+    </nb-card-body>
+    <nb-card-footer>
+      <div class="d-flex justify-content-end gap-2">
+        <button
+          nbButton
+          status="basic"
+          (click)="closeCreateDialog()"
+          [disabled]="creating"
+        >
+          Cancel
+        </button>
+        <button
+          nbButton
+          status="primary"
+          (click)="createMV()"
+          [disabled]="creating || !createSQL.trim()"
+        >
+          <nb-icon icon="checkmark-outline"></nb-icon>
+          {{ creating ? 'CreateMedium...' : 'Create' }}
+        </button>
+      </div>
+    </nb-card-footer>
+  </nb-card>
+</ng-template>
+
+<!-- Detail Dialog -->
+<ng-template #detailDialog let-data let-ref="dialogRef">
+  <nb-card *ngIf="selectedMV">
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center">
+        <h5>Materialized View Details: {{ selectedMV.name }}</h5>
+        <button nbButton ghost (click)="closeDetailDialog()">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+    <nb-card-body>
+      <nb-tabset>
+        <nb-tab tabTitle="Basic Information">
+          <div class="detail-section">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="label">Name</label>
+                <p>{{ selectedMV.name }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Database</label>
+                <p>{{ selectedMV.database_name }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Refresh Type</label>
+                <p [innerHTML]="getRefreshTypeBadge(selectedMV.refresh_type)"></p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Status</label>
+                <p>
+                  <span *ngIf="selectedMV.is_active" class="badge badge-success">Active</span>
+                  <span *ngIf="!selectedMV.is_active" class="badge badge-warning">Inactive</span>
+                </p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Partition Type</label>
+                <p>{{ selectedMV.partition_type || '-' }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Rows</label>
+                <p>{{ selectedMV.rows || '-' }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Job ID</label>
+                <p>{{ selectedMV.task_id || '-' }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Job Name</label>
+                <p>{{ selectedMV.task_name || '-' }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Last Refresh Start Time</label>
+                <p>{{ selectedMV.last_refresh_start_time || '-' }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Last Refresh Completion Time</label>
+                <p>{{ selectedMV.last_refresh_finished_time || '-' }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Last Refresh Duration</label>
+                <p>{{ selectedMV.last_refresh_duration || '-' }}</p>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="label">Last Refresh Status</label>
+                <p [innerHTML]="getRefreshStateBadge(selectedMV.last_refresh_state)"></p>
+              </div>
+              
+              <!-- Error information -->
+              <div class="col-12 mb-3" *ngIf="selectedMV.last_refresh_error_message">
+                <label class="label">Refresh Error Details</label>
+                <nb-alert status="danger" closable="false">
+                  <strong>Error Code:</strong>{{ selectedMV.last_refresh_error_code || '-' }}<br>
+                  <strong>Error Details:</strong>{{ selectedMV.last_refresh_error_message }}
+                </nb-alert>
+              </div>
+              
+              <!-- Partition information -->
+              <div class="col-md-6 mb-3" *ngIf="selectedMV.last_refresh_start_partition">
+                <label class="label">Last Refresh Start Partition</label>
+                <p>{{ selectedMV.last_refresh_start_partition }}</p>
+              </div>
+              <div class="col-md-6 mb-3" *ngIf="selectedMV.last_refresh_end_partition">
+                <label class="label">Last Refresh End Partition</label>
+                <p>{{ selectedMV.last_refresh_end_partition }}</p>
+              </div>
+              
+              <!-- Force refresh flag -->
+              <div class="col-md-6 mb-3" *ngIf="selectedMV.last_refresh_force_refresh !== undefined && selectedMV.last_refresh_force_refresh !== null">
+                <label class="label">Force Refresh</label>
+                <p>
+                  <span *ngIf="selectedMV.last_refresh_force_refresh" class="badge badge-warning">Yes</span>
+                  <span *ngIf="!selectedMV.last_refresh_force_refresh" class="badge badge-basic">No</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </nb-tab>
+        <nb-tab tabTitle="DDL Statement">
+          <div class="ddl-section">
+            <textarea
+              nbInput
+              fullWidth
+              [value]="mvDDL"
+              readonly
+            ></textarea>
+          </div>
+        </nb-tab>
+      </nb-tabset>
+    </nb-card-body>
+    <nb-card-footer>
+      <div class="d-flex justify-content-between">
+        <div class="d-flex gap-2">
+          <button nbButton status="info" size="small" (click)="closeDetailDialog(); openEditDialog(selectedMV)">
+            <nb-icon icon="edit-outline"></nb-icon>
+            Edit
+          </button>
+          <button 
+            *ngIf="selectedMV.refresh_type !== 'ROLLUP'" 
+            nbButton 
+            status="success" 
+            size="small" 
+            (click)="closeDetailDialog(); openRefreshDialog(selectedMV)"
+          >
+            <nb-icon icon="refresh-outline"></nb-icon>
+            Refresh
+          </button>
+          <button 
+            *ngIf="selectedMV.refresh_type !== 'ROLLUP'" 
+            nbButton 
+            [status]="selectedMV.is_active ? 'warning' : 'success'" 
+            size="small" 
+            (click)="closeDetailDialog(); toggleActiveState(selectedMV)"
+          >
+            <nb-icon icon="power-outline"></nb-icon>
+            {{ selectedMV.is_active ? 'Deactivate' : 'Activate' }}
+          </button>
+        </div>
+        <button nbButton status="basic" (click)="closeDetailDialog()">
+          Off
+        </button>
+      </div>
+    </nb-card-footer>
+  </nb-card>
+</ng-template>
+
+<!-- Refresh Dialog -->
+<ng-template #refreshDialog let-data let-ref="dialogRef">
+  <nb-card *ngIf="selectedMV">
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center">
+        <h5>Refresh Materialized View: {{ selectedMV.name }}</h5>
+        <button nbButton ghost (click)="closeRefreshDialog()">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+    <nb-card-body>
+      <div class="form-group">
+        <label class="label">Refresh Mode</label>
+        <nb-select fullWidth [(selected)]="refreshMode">
+          <nb-option *ngFor="let option of refreshModeOptions" [value]="option.value">
+            {{ option.label }}
+          </nb-option>
+        </nb-select>
+        <small class="form-text text-muted">
+          ASYNC: asynchronous refresh (runs in the background); SYNC: synchronous refresh (blocks until complete).
+        </small>
+      </div>
+
+      <div class="form-group mt-3">
+        <nb-checkbox [(checked)]="refreshForce">
+          Force Refresh (FORCE)
+        </nb-checkbox>
+        <small class="form-text text-muted d-block">
+          Force a materialized view refresh even when the data has not changed.
+        </small>
+      </div>
+
+      <div class="form-group mt-3" *ngIf="selectedMV.partition_type && selectedMV.partition_type !== 'UNPARTITIONED'">
+        <label class="label">Partition Refresh (Optional)</label>
+        <div class="row">
+          <div class="col-md-6">
+            <input
+              nbInput
+              fullWidth
+              type="text"
+              placeholder="Starting Partition"
+              [(ngModel)]="refreshPartitionStart"
+            />
+          </div>
+          <div class="col-md-6">
+            <input
+              nbInput
+              fullWidth
+              type="text"
+              placeholder="Ending Partition"
+              [(ngModel)]="refreshPartitionEnd"
+            />
+          </div>
+        </div>
+        <small class="form-text text-muted">
+          <nb-icon icon="info-outline"></nb-icon>
+          Leave blank to refresh all partitions, or specify a partition range to refresh only part of the data.
+        </small>
+      </div>
+    </nb-card-body>
+    <nb-card-footer>
+      <div class="d-flex justify-content-end gap-2">
+        <button
+          nbButton
+          status="basic"
+          (click)="closeRefreshDialog()"
+          [disabled]="refreshing"
+        >
+          Cancel
+        </button>
+        <button
+          nbButton
+          status="primary"
+          (click)="refreshMV()"
+          [disabled]="refreshing"
+        >
+          <nb-icon icon="refresh-outline"></nb-icon>
+          {{ refreshing ? 'RefreshMedium...' : 'Start Refresh' }}
+        </button>
+      </div>
+    </nb-card-footer>
+  </nb-card>
+</ng-template>
+
+<!-- Edit Dialog -->
+<ng-template #editDialog let-data let-ref="dialogRef">
+  <nb-card>
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center">
+        <h5>Edit Materialized View: {{ selectedMV?.name }}</h5>
+        <button nbButton ghost (click)="closeEditDialog()">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+    <nb-card-body>
+      <div class="form-group">
+        <label class="label">Operation Type</label>
+        <nb-select [(selected)]="editAction" fullWidth>
+          <nb-option value="rename">Rename</nb-option>
+          <nb-option value="refresh_strategy">Change Refresh Strategy</nb-option>
+          <nb-option value="properties">Edit Properties</nb-option>
+          <nb-option value="advanced">Advanced Mode (Custom ALTER Clause)</nb-option>
+        </nb-select>
+      </div>
+
+      <!-- Rename Form -->
+      <div *ngIf="editAction === 'rename'" class="form-group">
+        <label class="label">New Name <span class="text-danger">*</span></label>
+        <input
+          nbInput
+          fullWidth
+          type="text"
+          [(ngModel)]="editNewName"
+          placeholder="Enter a new materialized view name"
+        />
+        <p class="caption text-hint mt-2">
+          <nb-icon icon="info-outline"></nb-icon>
+          Generated SQL: ALTER MATERIALIZED VIEW {{ selectedMV?.database_name }}.{{ selectedMV?.name }} RENAME {{ editNewName }}
+        </p>
+      </div>
+
+      <!-- Refresh Strategy Form -->
+      <div *ngIf="editAction === 'refresh_strategy'">
+        <div class="form-group">
+          <label class="label">Refresh Strategy <span class="text-danger">*</span></label>
+          <nb-select [(selected)]="editRefreshStrategy" fullWidth>
+            <nb-option value="MANUAL">Manual Refresh (MANUAL)</nb-option>
+            <nb-option value="ASYNC">Automatic Refresh (ASYNC)</nb-option>
+          </nb-select>
+        </div>
+
+        <div *ngIf="editRefreshStrategy === 'ASYNC'" class="row">
+          <div class="col-md-6">
+            <div class="form-group">
+              <label class="label">Refresh Interval</label>
+              <input
+                nbInput
+                fullWidth
+                type="number"
+                min="1"
+                [(ngModel)]="editRefreshInterval"
+                placeholder="1"
+              />
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="form-group">
+              <label class="label">Time Unit</label>
+              <nb-select [(selected)]="editRefreshUnit" fullWidth>
+                <nb-option value="HOUR">Hours</nb-option>
+                <nb-option value="DAY">day</nb-option>
+                <nb-option value="WEEK">week</nb-option>
+                <nb-option value="MONTH">Months</nb-option>
+              </nb-select>
+            </div>
+          </div>
+        </div>
+
+        <p class="caption text-hint mt-2">
+          <nb-icon icon="info-outline"></nb-icon>
+          <span *ngIf="editRefreshStrategy === 'MANUAL'">
+            Generated SQL: ALTER MATERIALIZED VIEW ... REFRESH MANUAL
+          </span>
+          <span *ngIf="editRefreshStrategy === 'ASYNC'">
+            Generated SQL: ALTER MATERIALIZED VIEW ... REFRESH ASYNC EVERY(INTERVAL {{ editRefreshInterval }} {{ editRefreshUnit }})
+          </span>
+        </p>
+      </div>
+
+      <!-- Properties Form -->
+      <div *ngIf="editAction === 'properties'">
+        <div class="form-group">
+          <label class="label">Property Name <span class="text-danger">*</span></label>
+          <input
+            nbInput
+            fullWidth
+            type="text"
+            [(ngModel)]="editPropertyKey"
+            placeholder="e.g. session.enable_profile or mv_rewrite_staleness_second"
+          />
+        </div>
+        <div class="form-group">
+          <label class="label">Property Value <span class="text-danger">*</span></label>
+          <input
+            nbInput
+            fullWidth
+            type="text"
+            [(ngModel)]="editPropertyValue"
+            placeholder="Enter a property value"
+          />
+        </div>
+
+        <nb-accordion class="mt-3">
+          <nb-accordion-item>
+            <nb-accordion-item-header>Common Property Descriptions</nb-accordion-item-header>
+            <nb-accordion-item-body>
+              <ul class="list-unstyled small">
+                <li><strong>session.enable_profile</strong> - Enable Profile (true/false)</li>
+                <li><strong>session.enable_spill</strong> - Enable spilling intermediate results to disk (true/false)</li>
+                <li><strong>session.spill_mode</strong> - Spill mode (auto/force)</li>
+                <li><strong>mv_rewrite_staleness_second</strong> - Query rewrite staleness (seconds)</li>
+                <li><strong>partition_ttl_number</strong> - Partition TTL count</li>
+                <li><strong>partition_refresh_number</strong> - Partition refresh count</li>
+              </ul>
+            </nb-accordion-item-body>
+          </nb-accordion-item>
+        </nb-accordion>
+
+        <p class="caption text-hint mt-2">
+          <nb-icon icon="info-outline"></nb-icon>
+          Generated SQL: ALTER MATERIALIZED VIEW ... SET ("{{ editPropertyKey }}" = "{{ editPropertyValue }}")
+        </p>
+      </div>
+
+      <!-- Advanced Form -->
+      <div *ngIf="editAction === 'advanced'">
+        <div class="form-group">
+          <label class="label">ALTER Clause <span class="text-danger">*</span></label>
+          <textarea
+            nbInput
+            fullWidth
+            rows="4"
+            [(ngModel)]="editAdvancedClause"
+            placeholder="For example: ACTIVE, INACTIVE, SWAP WITH other_mv, SET (...), etc."
+          ></textarea>
+        </div>
+
+        <nb-alert status="info" closable="false">
+          <strong>Supported ALTER clauses:</strong>
+          <ul class="mb-0 mt-2">
+            <li><code>RENAME new_name</code> - Rename</li>
+            <li><code>REFRESH MANUAL</code> or <code>REFRESH ASYNC EVERY(...)</code> - Change Refresh Strategy</li>
+            <li><code>ACTIVE</code> or <code>INACTIVE</code> - Change Status</li>
+            <li><code>SET ("key" = "value")</code> - Edit Properties</li>
+            <li><code>SWAP WITH other_mv_name</code> - Atomic Replacement</li>
+          </ul>
+        </nb-alert>
+
+        <p class="caption text-hint mt-2">
+          <nb-icon icon="alert-triangle-outline"></nb-icon>
+          Make sure the ALTER clause is valid. The complete SQL will be: ALTER MATERIALIZED VIEW {{ selectedMV?.database_name }}.{{ selectedMV?.name }} {{ editAdvancedClause }}
+        </p>
+      </div>
+    </nb-card-body>
+    <nb-card-footer>
+      <div class="d-flex justify-content-end gap-2">
+        <button
+          nbButton
+          status="basic"
+          (click)="closeEditDialog()"
+          [disabled]="editing"
+        >
+          Cancel
+        </button>
+        <button
+          nbButton
+          status="primary"
+          (click)="editMV()"
+          [disabled]="editing"
+        >
+          <nb-icon icon="checkmark-outline"></nb-icon>
+          {{ editing ? 'Updating...' : 'Confirm Changes' }}
+        </button>
+      </div>
+    </nb-card-footer>
+  </nb-card>
+</ng-template>

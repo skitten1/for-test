@@ -1,0 +1,26 @@
+{{- /*
+Только для FE этого релиза: режим mTLS для всего namespace задаёт umbrella-проект.
+Создаётся всегда, независимо от PEER_AUTH_ENABLED: по умолчанию Istio работает в PERMISSIVE,
+и проблема с портом 9030 возникает и там.
+
+Порт 9030 (MySQL-протокол) — DISABLE: MySQL «server-first» (первым говорит сервер),
+а в режимах STRICT и PERMISSIVE sidecar ждёт от клиента первым TLS ClientHello —
+клиент и sidecar ждут друг друга, и подключение обрывается по таймауту.
+Остальные порты — PERMISSIVE: init-джоба и оператор StarRocks работают вне mesh.
+Пара к этому — DestinationRule (destinationrule.yaml): клиенты в mesh шлют на 9030 открытый TCP.
+*/ -}}
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: starrocks-fe-{{ .Release.Name }}
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "dognauts-starrocks.feSelectorLabels" . | nindent 6 }}
+  mtls:
+    mode: PERMISSIVE
+  portLevelMtls:
+    9030:
+      mode: DISABLE

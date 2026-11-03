@@ -1,0 +1,193 @@
+{{- /*
+StarRocks Admin UI (форк jlon/starrocks-admin v1, образ собирается Dockerfile.dognauts).
+Патчи Dognauts в форке:
+ - свой JWT приложение передаёт в X-SR-Admin-Token (Authorization занят шлюзом платформы);
+ - автовход: при открытии UI входит под APP_PLATFORM_AUTOLOGIN_USER — доступ к UI
+   проверяет платформа (ext_authz на поде, envoyfilter.yaml).
+Регистрация пользователей закрыта в VirtualService.
+
+Контейнер provisioner настраивает приложение изнутри пода (через 127.0.0.1 — мимо sidecar и ext_authz,
+который пропускает только пользователей платформы с токеном Keycloak):
+ 1. пароль пользователя приложения admin: admin/admin -> APP_PLATFORM_AUTOLOGIN_PASSWORD из Vault;
+ 2. регистрирует кластер проекта под служебным пользователем StarRocks (platform_admin_ui).
+Идемпотентно, выполняется при каждом старте пода; дальше контейнер просто спит.
+*/ -}}
+{{- if .Values.adminUi.enabled }}
+{{- $name := include "dognauts-starrocks.adminUiName" . }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-data
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.adminUi.storage.size }}
+  {{- with .Values.adminUi.storage.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # SQLite на RWO-томе: одна реплика, без одновременной работы двух подов
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "dognauts-starrocks.adminUiSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dognauts-starrocks.adminUiSelectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "dognauts-starrocks.adminUiName" . }}
+      {{- with .Values.adminUi.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.starrocks.starrocksCluster.componentValues.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: admin-ui
+          image: "{{ .Values.adminUi.image.repository }}:{{ .Values.adminUi.image.tag }}"
+          # команда задана явно: webhook Bank-Vaults оборачивает её, не обращаясь к реестру образов
+          command: ["/app/bin/starrocks-admin"]
+          workingDir: /app
+          {{- with .Values.adminUi.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: APP_JWT_SECRET
+              value: {{ include "dognauts-starrocks.vaultRef" (dict "path" .Values.vault.adminUiPath "key" "APP_JWT_SECRET") }}
+            - name: APP_PLATFORM_AUTOLOGIN_USER
+              value: {{ .Values.adminUi.appUser | quote }}
+            - name: APP_PLATFORM_AUTOLOGIN_PASSWORD
+              value: {{ include "dognauts-starrocks.vaultRef" (dict "path" .Values.vault.adminUiPath "key" "APP_PLATFORM_AUTOLOGIN_PASSWORD") }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.adminUi.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: logs
+              mountPath: /app/logs
+            - name: tmp
+              mountPath: /tmp
+        - name: provisioner
+          {{- with .Values.projectAnchor.hooks.kubectlImage }}
+          image: "{{ .registry }}/{{ .repository }}:{{ .tag }}"
+          {{- end }}
+          {{- with .Values.projectAnchor.hooks.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          env:
+            - name: API
+              value: "http://127.0.0.1:8080/api"
+            - name: APP_USER
+              value: {{ .Values.adminUi.appUser | quote }}
+            - name: APP_PASSWORD
+              value: {{ include "dognauts-starrocks.vaultRef" (dict "path" .Values.vault.adminUiPath "key" "APP_PLATFORM_AUTOLOGIN_PASSWORD") }}
+            - name: SR_USER
+              value: {{ .Values.adminUi.starrocksUser | quote }}
+            - name: SR_PASSWORD
+              value: {{ include "dognauts-starrocks.vaultRef" (dict "path" .Values.vault.adminUiPath "key" "STARROCKS_ADMIN_UI_SR_PASSWORD") }}
+            - name: CLUSTER_NAME
+              value: {{ .Values.adminUi.clusterName | quote }}
+            - name: FE_HOST
+              value: {{ include "dognauts-starrocks.feService" . }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -u
+              # login <пароль> — печатает токен или пусто
+              login() {
+                curl -s -X POST "$API/auth/login" -H "Content-Type: application/json" \
+                  -d "$(jq -nc --arg u "$APP_USER" --arg p "$1" '{username: $u, password: $p}')" \
+                  | jq -r '.token // empty'
+              }
+              call() {  # call <метод> <путь> [json]
+                curl -s -X "$1" "$API$2" -H "Content-Type: application/json" \
+                  -H "X-SR-Admin-Token: Bearer $TOKEN" ${3:+-d "$3"}
+              }
+
+              echo "Waiting for Admin UI at $API ..."
+              until [ "$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/login" -X POST -H 'Content-Type: application/json' -d '{}')" != "000" ]; do
+                sleep 5
+              done
+
+              TOKEN=$(login "$APP_PASSWORD")
+              if [ -z "$TOKEN" ]; then
+                echo "Setting the password of '$APP_USER' ..."
+                TOKEN=$(login admin)
+                [ -z "$TOKEN" ] && { echo "Cannot log in to Admin UI with either password"; exit 1; }
+                RESP=$(call PUT /auth/me "$(jq -nc --arg p "$APP_PASSWORD" '{current_password: "admin", new_password: $p}')")
+                echo "$RESP" | jq -e '.id? // empty' >/dev/null || { echo "Password change failed: $RESP"; exit 1; }
+                TOKEN=$(login "$APP_PASSWORD")
+                [ -z "$TOKEN" ] && { echo "Password change failed"; exit 1; }
+              fi
+
+              if call GET /clusters | jq -e --arg n "$CLUSTER_NAME" '[.. | objects | select(.name? == $n)] | length > 0' >/dev/null; then
+                echo "Cluster '$CLUSTER_NAME' is already registered"
+              else
+                echo "Registering cluster '$CLUSTER_NAME' ..."
+                RESP=$(call POST /clusters "$(jq -nc --arg n "$CLUSTER_NAME" --arg h "$FE_HOST" --arg u "$SR_USER" --arg p "$SR_PASSWORD" \
+                  '{name: $n, description: "StarRocks cluster of the project", fe_host: $h, fe_http_port: 8030, fe_query_port: 9030, username: $u, password: $p, catalog: "default_catalog"}')")
+                echo "$RESP" | jq -e '.id? // .data.id? // empty' >/dev/null || { echo "Registration failed: $RESP"; exit 1; }
+              fi
+              echo "Done, sleeping"
+              while true; do sleep 3600; done
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $name }}-data
+        - name: logs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "dognauts-starrocks.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    {{- include "dognauts-starrocks.adminUiSelectorLabels" . | nindent 4 }}
+{{- end }}

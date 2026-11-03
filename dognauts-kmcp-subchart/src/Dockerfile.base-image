@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1
+
+RUN groupadd -r -g 64535 sandbox && \
+    useradd -r -g sandbox -u 64535 sandbox
+
+RUN pip install --no-cache-dir 'llm-sandbox[mcp-k8s]'
+
+USER sandbox
+
+ENTRYPOINT ["python", "-m", "llm_sandbox.mcp_server.server"]

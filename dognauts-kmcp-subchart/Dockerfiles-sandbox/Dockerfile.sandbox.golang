@@ -1,0 +1,35 @@
+FROM harbor.neoflex.ru/dognauts/golang:1.23
+
+ENV GOPATH=/go
+ENV GOMODCACHE=/go/pkg/mod
+WORKDIR /tmp/gowarm
+RUN go mod init sandboxwarm \
+    && go get github.com/pkg/errors \
+    && go get gopkg.in/yaml.v3 \
+    && go get github.com/spyzhov/ajson
+
+RUN groupadd -r -g 64535 sandbox 2>/dev/null || true \
+    && useradd -r -g sandbox -u 64535 sandbox 2>/dev/null || true
+
+RUN chmod -R a+rX /go
+
+ENV GOCACHE=/tmp/go-build-cache
+RUN mkdir -p /tmp/go-build-cache && chmod -R 777 /tmp/go-build-cache
+
+# Прогреваем GOCACHE — компилируем пробную программу ещё на этапе сборки образа.
+# Без этого стандартная библиотека Go (fmt, encoding/json и т.д.) компилируется
+# заново "с нуля" при ПЕРВОМ запуске кода в каждом свежесозданном поде-песочнице,
+# а под урезанным CPU-лимитом (500m) это занимает десятки секунд — отсюда таймауты
+# клиента и последующий креш сессии MCP.
+RUN mkdir -p /tmp/warmup && cd /tmp/warmup \
+    && go mod init warmup \
+    && printf 'package main\nimport (\n\t"encoding/json"\n\t"fmt"\n\t"net/http"\n\t"os"\n\t"strings"\n\t"time"\n\n\t"github.com/pkg/errors"\n\t"gopkg.in/yaml.v3"\n)\nfunc main() {\n\tfmt.Println("warmup")\n\t_ = json.Marshal\n\t_ = http.Get\n\t_ = os.Args\n\t_ = time.Now\n\t_ = strings.ToUpper\n\t_ = errors.New\n\t_ = yaml.Marshal\n}\n' > main.go \
+    && go mod tidy \
+    && go build -o /tmp/warmup/warmup main.go \
+    && rm -rf /tmp/warmup/warmup /tmp/warmup/main.go
+
+ENV GOFLAGS=-mod=mod
+ENV GOPROXY=off
+ENV GOSUMDB=off
+
+USER 64535

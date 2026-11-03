@@ -1,0 +1,11 @@
+{{- $np := .Values.networkPolicy | default dict }}
+{{- range $key, $policy := ($np.policies | default dict) }}
+---
+#[@< if eq (getenv "NETPOLICY_TYPE" "cilium") "cilium" >@]
+{{ include "dognauts-common-chart.netpolicy" (dict
+     "context"  $
+     "config"   $policy
+     "name"     (printf "%s-%s" $.Release.Name ($policy.name | default $key))
+     "selector" (merge (dict "app.kubernetes.io/instance" $.Release.Name) ($policy.selector | default dict))) }}
+#[@< end >@]
+{{- end }}

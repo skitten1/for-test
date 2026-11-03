@@ -1,0 +1,27 @@
+{{- /*
+Пункты меню платформы для этого релиза: по одному CR ProjectComponent на каждую
+запись из projectAnchorLinks. Обычный манифест (не хук): живёт и удаляется вместе с релизом.
+*/ -}}
+{{- include "dognauts-common-chart.project-anchor.validate" . }}
+{{- if and .Values.projectComponent.enabled .Values.projectAnchor.isNestedRelease }}
+{{- $links := include "dognauts-starrocks.projectComponentLinks" . | fromYaml }}
+{{- range $key, $link := $links }}
+---
+apiVersion: dognauts.neoflex.ru/v1
+kind: ProjectComponent
+metadata:
+  name: {{ printf "%s-%s" $key $.Release.Name | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "dognauts-starrocks.labels" $ | nindent 4 }}
+    dognauts.neoflex.ru/project-anchor: {{ $.Values.projectAnchor.name | quote }}
+    dognauts.neoflex.ru/nested-release: "true"
+    dognauts.neoflex.ru/nested-chart: {{ $.Chart.Name | quote }}
+    dognauts.neoflex.ru/nested-release-name: {{ $.Release.Name | quote }}
+spec:
+  releaseName: {{ $.Values.projectAnchor.name | quote }}
+  {{- toYaml $link | nindent 2 }}
+  nestedReleaseName: {{ $.Release.Name | quote }}
+  chartName: {{ $.Chart.Name | quote }}
+  chartVersion: {{ $.Chart.Version | quote }}
+{{- end }}
+{{- end }}

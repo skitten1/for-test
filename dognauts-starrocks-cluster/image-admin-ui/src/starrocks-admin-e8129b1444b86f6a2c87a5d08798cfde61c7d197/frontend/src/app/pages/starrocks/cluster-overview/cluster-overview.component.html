@@ -1,0 +1,429 @@
+<div class="cluster-overview">
+  <nb-card>
+    <nb-card-header>
+      <div class="overview-toolbar">
+        <div class="overview-toolbar__info">
+          <div class="overview-toolbar__title">
+            <span>{{ overview?.cluster_name || 'StarRocks Cluster Overview' }}</span>
+            <nb-badge *ngIf="overview" text="Active" status="success"></nb-badge>
+          </div>
+          <div *ngIf="overview?.timestamp" class="overview-toolbar__timestamp">
+            <nb-icon icon="clock-outline"></nb-icon>
+            <span>{{ overview?.timestamp | date: 'yyyy-MM-dd HH:mm:ss' }}</span>
+          </div>
+        </div>
+        <nb-actions size="small" class="overview-toolbar__actions">
+          <nb-action>
+            <nb-select [(selected)]="timeRange" (selectedChange)="onTimeRangeChange($event)" placeholder="Time Range" size="small">
+              <nb-option *ngFor="let opt of timeRangeOptions" [value]="opt.value">{{ opt.label }}</nb-option>
+            </nb-select>
+          </nb-action>
+          <nb-action>
+            <button nbButton size="small" status="info" (click)="onManualRefresh()">
+              <nb-icon icon="refresh-outline"></nb-icon>
+              Refresh
+            </button>
+          </nb-action>
+          <nb-action>
+            <nb-select [(selected)]="refreshInterval" (selectedChange)="onRefreshIntervalChange($event)" placeholder="Auto Refresh" size="small">
+              <nb-option *ngFor="let opt of refreshIntervalOptions" [value]="opt.value">{{ opt.label }}</nb-option>
+            </nb-select>
+          </nb-action>
+        </nb-actions>
+      </div>
+    </nb-card-header>
+
+    <nb-card-body>
+  <!-- Loading Spinner -->
+      <div *ngIf="loading" class="text-center">
+    <nb-spinner size="giant" status="primary"></nb-spinner>
+  </div>
+
+  <div *ngIf="!loading">
+    
+    <!-- ==================== 顶部数字卡片区域 ==================== -->
+    
+    <!-- 指标卡片 - 对齐 ngx-admin 风格 -->
+    <div class="metric-cards-row">
+      <nb-card
+        *ngFor="let card of healthCards; let i = index"
+        class="metric-card"
+        [status]="card.cardId === 'latency_percentile' ? getSelectedLatencyStatus() : (card.cardId === 'disk_cache_metric' ? getDiskCardStatus() : card.status)"
+        (click)="handleCardClick(card)"
+        [nbTooltip]="card.cardId === 'latency_percentile' ? 'Click to switch between P50, P95, and P99' : (card.cardId === 'disk_cache_metric' ? getDiskCardDescription() : (card.description || card.title))"
+        nbTooltipPlacement="top">
+        <nb-card-body>
+          <div class="metric-card__icon">
+            <nb-icon
+              [icon]="card.icon || 'info-outline'"
+              [status]="card.cardId === 'latency_percentile' ? getSelectedLatencyStatus() : (card.cardId === 'disk_cache_metric' ? getDiskCardStatus() : card.status)">
+            </nb-icon>
+          </div>
+          <div class="metric-card__content">
+            <span class="metric-card__title">
+              {{ card.cardId === 'latency_percentile' ? getLatencyCardTitle() : (card.cardId === 'disk_cache_metric' ? getDiskCardTitle() : card.title) }}
+            </span>
+            <h3 class="metric-card__value" [id]="'card-value-' + i">
+              {{ card.cardId === 'latency_percentile' ? Math.round(getSelectedLatencyValue()).toString() : (card.cardId === 'disk_cache_metric' ? getDiskCardValue() : card.value) }}
+              <span class="metric-card__unit" *ngIf="card.cardId === 'latency_percentile' || card.cardId === 'disk_cache_metric'">{{ card.cardId === 'latency_percentile' ? 'ms' : getDiskCardUnit() }}</span>
+              <span class="metric-card__unit" *ngIf="card.cardId !== 'latency_percentile' && card.cardId !== 'disk_cache_metric' && card.unit">{{ card.unit }}</span>
+            </h3>
+            <div class="metric-card__trend" *ngIf="card.trend !== undefined && card.trend !== 0">
+              <nb-icon [icon]="getTrendIcon(card.trend)" [status]="getTrendColor(card.trend)"></nb-icon>
+              <span [class]="'trend-' + getTrendColor(card.trend)">
+                {{ card.trend > 0 ? '+' : '' }}{{ card.trend.toFixed(1) }}%
+              </span>
+            </div>
+          </div>
+        </nb-card-body>
+      </nb-card>
+    </div>
+
+    <!-- ==================== 图表区域 ==================== -->
+
+    <!-- 第一行（P0 - 核心性能监控） -->
+    <div class="row chart-row">
+      <div class="col-lg-6">
+        <ngx-metric-card-group 
+          title="Query Performance Trends" 
+          icon="activity-outline"
+          [collapsed]="false">
+          <div *ngIf="performanceTrends">
+            <div class="chart-container">
+              <h6 class="chart-subtitle">Query Throughput (QPS/RPS)</h6>
+              <div echarts [options]="getQpsChartOptions()" class="echart"></div>
+            </div>
+            <div class="chart-container">
+              <h6 class="chart-subtitle">Query Latency Trend (P50/P95/P99)</h6>
+              <div echarts [options]="getLatencyChartOptions()" class="echart"></div>
+            </div>
+          </div>
+          <nb-alert *ngIf="!performanceTrends" status="info" class="no-data">No performance data available.</nb-alert>
+        </ngx-metric-card-group>
+      </div>
+      
+      <div class="col-lg-6">
+        <ngx-metric-card-group 
+          title="Resource Usage Trends" 
+          icon="bar-chart-outline"
+          [collapsed]="false">
+          <div *ngIf="resourceTrends">
+            <div class="chart-container">
+              <h6 class="chart-subtitle">Compute Node CPU / Memory / Disk</h6>
+              <div echarts [options]="getResourceChartOptions()" class="echart"></div>
+            </div>
+            <div class="chart-container">
+              <h6 class="chart-subtitle">FE JVM Heap Usage</h6>
+              <div echarts [options]="getJvmHeapChartOptions()" class="echart"></div>
+            </div>
+          </div>
+          <nb-alert *ngIf="!resourceTrends" status="info" class="no-data">No resource data available.</nb-alert>
+        </ngx-metric-card-group>
+      </div>
+    </div>
+
+    <!-- 第二行（P1 - 数据统计） -->
+    <div class="row chart-row">
+      <div class="col-12">
+        <ngx-metric-card-group 
+          title="Data Statistics" 
+          icon="pie-chart-outline"
+          [collapsed]="false">
+          <div *ngIf="dataStatistics">
+            <!-- Data Statistics Summary -->
+            <div class="stats-summary">
+              <div class="stat-item">
+                <span class="label">Databases:</span>
+                <span class="value">{{ dataStatistics.databaseCount }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">Tables:</span>
+                <span class="value">{{ dataStatistics.tableCount }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">Total Data Size:</span>
+                <span class="value">{{ formatBytes(dataStatistics.totalDataSizeBytes) }}</span>
+              </div>
+            </div>
+
+            <div class="row stats-columns">
+              <div class="col-md-6 stats-column">
+                <!-- Top Tables by Size -->
+                <h6 class="section-title">Top 10 Tables by Size</h6>
+                <table class="top-tables-table">
+              <thead>
+                <tr>
+                      <th class="cell-name">Database.Table</th>
+                      <th class="cell-metric text-right">Size</th>
+                      <th class="cell-metric text-right">Rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let table of topTablesBySize">
+                      <td class="cell-break">{{ table.database }}.{{ table.table }}</td>
+                      <td class="text-right cell-nowrap">{{ formatBytes(table.sizeBytes) }}</td>
+                      <td class="text-right">{{ table.rowCount ? formatNumber(table.rowCount) : 'N/A' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <nb-alert *ngIf="topTablesBySize.length === 0" status="info" class="no-data">No data available.</nb-alert>
+              </div>
+
+              <div class="col-md-6 stats-column">
+                <!-- Top Tables by Access -->
+                <h6 class="section-title">Top 10 Most Accessed Tables</h6>
+                <table class="top-tables-table">
+                  <thead>
+                    <tr>
+                      <th class="cell-name-wide">Database.Table</th>
+                      <th class="cell-metric text-right">Access Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let table of topTablesByAccess">
+                      <td class="cell-break">{{ table.database }}.{{ table.table }}</td>
+                      <td class="text-right">{{ formatNumber(table.accessCount) }}</td>
+                </tr>
+              </tbody>
+            </table>
+                <nb-alert *ngIf="topTablesByAccess.length === 0" status="info" class="no-data">No data available.</nb-alert>
+              </div>
+            </div>
+          </div>
+          <nb-alert *ngIf="!dataStatistics" status="info" class="no-data">No data available.</nb-alert>
+        </ngx-metric-card-group>
+      </div>
+      </div>
+
+    <!-- 存算分离 Compaction 监控 -->
+    <div class="row chart-row">
+      <div class="col-12">
+        <ngx-metric-card-group 
+          title="Shared-Data Compaction Monitoring" 
+          icon="activity-outline"
+          [collapsed]="false">
+          <div *ngIf="compactionDetails">
+            <div class="row stats-columns">
+              <div class="col-md-8 stats-column">
+                <h6 class="section-title">Top 10 Partitions by Compaction Score</h6>
+                <table class="top-tables-table">
+                  <thead>
+                    <tr>
+                      <th class="compaction-col-name">Database</th>
+                      <th class="compaction-col-name">Table Name</th>
+                      <th class="compaction-col-name">Partition Name</th>
+                      <th class="compaction-col-metric text-right">Maximum Score</th>
+                      <th class="compaction-col-metric text-right">Average Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let p of compactionDetails.topPartitions">
+                      <td class="cell-break compaction-cell-text" [nbTooltip]="p.dbName" nbTooltipPlacement="top">{{ p.dbName }}</td>
+                      <td class="cell-break compaction-cell-text" [nbTooltip]="p.tableName" nbTooltipPlacement="top">{{ p.tableName }}</td>
+                      <td class="cell-break compaction-cell-text" [nbTooltip]="p.partitionName" nbTooltipPlacement="top">{{ p.partitionName }}</td>
+                      <td class="text-right cell-nowrap">
+                        <span [ngClass]="getScoreStatusClass(p.maxScore)" class="score-badge">
+                          {{ p.maxScore.toFixed(1) }}
+                        </span>
+                      </td>
+                      <td class="text-right cell-nowrap">{{ p.avgScore.toFixed(1) }}</td>
+                    </tr>
+                    <tr *ngIf="(compactionDetails?.topPartitions || []).length === 0">
+                      <td colspan="5" class="text-center text-muted">No data available.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              
+              <!-- 右侧：任务统计 -->
+              <div class="col-md-4 stats-column">
+                <!-- 任务统计 -->
+                <h6 class="section-title">Job Statistics</h6>
+                <div class="task-stats-grid">
+                  <div class="task-stat-item clickable" (click)="navigateToCompactions()">
+                    <span class="label">Total:</span>
+                    <span class="value">{{ compactionDetails?.taskStats?.totalCount || 0 }}</span>
+                  </div>
+                  <div class="task-stat-item clickable" (click)="navigateToCompactions()">
+                    <span class="label">In Progress:</span>
+                    <span class="value text-warning">{{ compactionDetails?.taskStats?.runningCount || 0 }}</span>
+                  </div>
+                  <div class="task-stat-item clickable" (click)="navigateToCompactions()">
+                    <span class="label">Completed:</span>
+                    <span class="value text-success">{{ compactionDetails?.taskStats?.finishedCount || 0 }}</span>
+                  </div>
+                </div>
+                
+                <!-- 耗时统计 -->
+                <h6 class="section-title">Duration Statistics</h6>
+                <div class="task-stats-grid">
+                  <div class="task-stat-item">
+                    <span class="label">Minimum:</span>
+                    <span class="value">{{ formatDurationString(compactionDetails?.durationStats?.minDurationMs || 0) }}</span>
+                  </div>
+                  <div class="task-stat-item">
+                    <span class="label">Maximum:</span>
+                    <span class="value">{{ formatDurationString(compactionDetails?.durationStats?.maxDurationMs || 0) }}</span>
+                  </div>
+                  <div class="task-stat-item">
+                    <span class="label">Average:</span>
+                    <span class="value">{{ formatDurationString(compactionDetails?.durationStats?.avgDurationMs || 0) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <nb-alert *ngIf="!compactionDetails" status="info" class="no-data">No data available.</nb-alert>
+        </ngx-metric-card-group>
+      </div>
+    </div>
+
+    <!-- 第三行（P1 - 任务监控详情） -->
+    <div class="row chart-row">
+      <div class="col-12">
+        <ngx-metric-card-group 
+          title="Job Monitoring Details" 
+          icon="layers-outline"
+          [collapsed]="false">
+          <div *ngIf="dataStatistics">
+            <div class="row">
+              <div class="col-md-6">
+            <!-- Materialized Views -->
+            <h6 class="section-title">Materialized Views</h6>
+            <div class="task-stats-grid">
+              <div class="task-stat-item">
+                <span class="label">Total:</span>
+                <span class="value">{{ dataStatistics.mvTotal }}</span>
+              </div>
+              <div class="task-stat-item">
+                <span class="label">Running:</span>
+                <span class="value text-warning">{{ dataStatistics.mvRunning }}</span>
+              </div>
+              <div class="task-stat-item">
+                <span class="label">Successful:</span>
+                <span class="value text-success">{{ dataStatistics.mvSuccess }}</span>
+              </div>
+              <div class="task-stat-item">
+                <span class="label">Failed:</span>
+                <span class="value text-danger">{{ dataStatistics.mvFailed }}</span>
+                  </div>
+              </div>
+            </div>
+
+              <div class="col-md-6">
+            <!-- Schema Changes -->
+            <h6 class="section-title">Schema Changes</h6>
+            <div class="task-stats-grid">
+              <div class="task-stat-item">
+                <span class="label">Running:</span>
+                <span class="value text-warning">{{ dataStatistics.schemaChangeRunning }}</span>
+              </div>
+              <div class="task-stat-item">
+                <span class="label">Pending:</span>
+                <span class="value text-info">{{ dataStatistics.schemaChangePending }}</span>
+              </div>
+              <div class="task-stat-item">
+                <span class="label">Completed:</span>
+                <span class="value text-success">{{ dataStatistics.schemaChangeFinished }}</span>
+              </div>
+              <div class="task-stat-item">
+                <span class="label">Failed:</span>
+                <span class="value text-danger">{{ dataStatistics.schemaChangeFailed }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <nb-alert *ngIf="!dataStatistics" status="info" class="no-data">No data available.</nb-alert>
+        </ngx-metric-card-group>
+      </div>
+    </div>
+
+    <!-- 第四行（P1 - 活跃会话） -->
+    <div class="row chart-row">
+      <div class="col-12">
+        <ngx-metric-card-group 
+          title="Active Queries and Sessions" 
+          icon="people-outline"
+          [collapsed]="false">
+          <div class="session-stats-grid">
+            <div class="session-stat-item clickable" (click)="navigateToSessions()">
+              <span class="label">Active Connections:</span>
+              <span class="value text-info">{{ activeSessions }}</span>
+            </div>
+            <div class="session-stat-item clickable" (click)="navigateToSessions()">
+              <span class="label">Running Queries:</span>
+              <span class="value text-warning">{{ runningQueries }}</span>
+            </div>
+            <div class="session-stat-item clickable" (click)="navigateToSessions()">
+              <span class="label">Active Users (1 hour):</span>
+              <span class="value text-success">{{ activeUsers1h }}</span>
+            </div>
+            <div class="session-stat-item clickable" (click)="navigateToSessions()">
+              <span class="label">Active Users (24 hours):</span>
+              <span class="value text-success">{{ activeUsers24h }}</span>
+            </div>
+          </div>
+        </ngx-metric-card-group>
+      </div>
+    </div>
+
+    <!-- 第五行（P2 - 预测与告警） -->
+    <div class="row chart-row">
+      <div class="col-lg-6">
+        <ngx-metric-card-group 
+          title="Capacity Forecast" 
+          icon="hard-drive-outline"
+          [collapsed]="true">
+          <div *ngIf="capacityPrediction">
+            <div class="capacity-info">
+              <div class="capacity-progress">
+                <nb-progress-bar 
+                  [value]="capacityPrediction.disk_usage_pct || 0" 
+                  [status]="(capacityPrediction.disk_usage_pct || 0) > 90 ? 'danger' : (capacityPrediction.disk_usage_pct || 0) > 70 ? 'warning' : 'success'">
+                </nb-progress-bar>
+                <span class="progress-label">{{ (capacityPrediction.disk_usage_pct || 0).toFixed(1) }}% usage</span>
+              </div>
+              <div class="stats-summary">
+                <div class="stat-item">
+                  <span class="label">Used:</span>
+                  <span class="value">{{ formatBytes(capacityPrediction.disk_used_bytes) }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="label">Total Capacity:</span>
+                  <span class="value">{{ formatBytes(capacityPrediction.disk_total_bytes) }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="label">Daily Growth:</span>
+                  <span class="value">{{ formatBytes(capacityPrediction.daily_growth_bytes) }}/day</span>
+                </div>
+                <div class="stat-item" *ngIf="capacityPrediction.days_until_full">
+                  <span class="label">Estimated Time to Full:</span>
+                  <span class="value" [class.text-danger]="capacityPrediction.days_until_full < 30">
+                    {{ capacityPrediction.days_until_full }} days
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <nb-alert *ngIf="!capacityPrediction" status="info" class="no-data">No capacity forecast data available.</nb-alert>
+        </ngx-metric-card-group>
+      </div>
+
+      <div class="col-lg-6">
+        <ngx-metric-card-group 
+          title="Smart Alerts and Recommendations" 
+          icon="alert-triangle-outline"
+          [collapsed]="true"
+          [badgeCount]="0"
+          badgeStatus="warning">
+          <nb-alert status="warning" class="no-data">Smart alerts (planned for Phase P2).</nb-alert>
+        </ngx-metric-card-group>
+      </div>
+    </div>
+
+
+  </div>
+    </nb-card-body>
+  </nb-card>
+</div>

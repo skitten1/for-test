@@ -1,0 +1,38 @@
+{{- $anchor := .Values.projectAnchor -}}
+{{- $project := $anchor.name | default .Release.Name -}}
+{{- $subjectArea := .Values.projectAnchor.nestedChart.links.subjectArea -}}
+{{- $services := list
+      (dict "chartAlias" "kmcp-helm-service" "helperPrefix" "dognauts-helm-service" "suffix" "helm-service")
+      (dict "chartAlias" "kmcp-template-service" "helperPrefix" "dognauts-template-engine-service" "suffix" "template-service")
+      (dict "chartAlias" "kmcp-resource-handler" "helperPrefix" "dognauts-resource-handler" "suffix" "resource-handler")
+-}}
+{{- range $svc := $services }}
+{{- $subchart := index $.Subcharts $svc.chartAlias -}}
+{{- $subchartValues := index $.Values $svc.chartAlias -}}
+{{- $prefix := printf "/project-api/%s/%s/%s-%s/" $project $.Release.Name $subjectArea $svc.suffix -}}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include (printf "%s.fullname" $svc.helperPrefix) $subchart }}
+  labels:
+    {{- include (printf "%s.labels" $svc.helperPrefix) $subchart | nindent 4 }}
+spec:
+  {{- with $subchartValues.istio.gateways }}
+  gateways:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $subchartValues.istio.hosts }}
+  hosts:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  http:
+    - match:
+        - uri:
+            prefix: {{ $prefix | quote }}
+      rewrite:
+        uri: '/'
+      route:
+        - destination:
+            host: {{ include (printf "%s.name" $svc.helperPrefix) $subchart }}
+{{ end }}

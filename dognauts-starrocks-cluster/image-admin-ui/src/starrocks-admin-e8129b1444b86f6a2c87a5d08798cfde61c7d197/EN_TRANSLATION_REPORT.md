@@ -1,0 +1,103 @@
+# English translation report
+
+- Repository: `jlon/starrocks-admin`
+- Base commit: `e8129b1444b86f6a2c87a5d08798cfde61c7d197`
+- Translated scope: visible frontend UI text, backend API messages and Profile diagnostic titles/descriptions/recommendations.
+- Source comments and the Chinese README are intentionally unchanged.
+
+- Frontend files modified: **64**
+- Backend files modified: **19**
+- Remaining frontend Chinese literal: `汇总`, an internal aggregate-row key rendered as **Summary**.
+- Remaining backend Chinese string literals: **0**.
+- TypeScript syntax check: **153 files, 0 syntax diagnostics**.
+- Full Angular build not run because `node_modules` is absent from the uploaded source archive.
+- Rust `cargo check` not run because Cargo is not installed in this environment.
+
+## Modified frontend files
+
+- `index.html`
+- `app/pages/pages-menu.ts`
+- `app/pages/pages.component.ts`
+- `app/@core/utils/error-handler.ts`
+- `app/@core/interceptors/jwt.interceptor.ts`
+- `app/@core/interceptors/jwt.interceptor.spec.ts`
+- `app/@core/services/confirm-dialog.service.ts`
+- `app/@core/services/dicebear.service.ts`
+- `app/@core/services/tab.service.ts`
+- `app/@core/data/overview.service.ts`
+- `app/@core/components/confirm-dialog/confirm-dialog.component.ts`
+- `app/pages/user-settings/user-settings.component.html`
+- `app/pages/user-settings/user-settings.component.ts`
+- `app/pages/system/users/users.component.ts`
+- `app/pages/system/users/users.component.html`
+- `app/pages/system/roles/roles.component.html`
+- `app/pages/system/roles/roles.component.ts`
+- `app/pages/system/organizations/organizations.component.html`
+- `app/pages/system/organizations/organizations.component.ts`
+- `app/pages/system/organizations/organization-form/organization-form-dialog.component.html`
+- `app/pages/system/organizations/table/actions-cell.component.ts`
+- `app/pages/system/roles/permission-tree/permission-tree.component.ts`
+- `app/pages/system/roles/role-form/role-form-dialog.component.html`
+- `app/pages/system/roles/table/actions-cell.component.ts`
+- `app/pages/system/roles/table/configure-cell.component.ts`
+- `app/pages/system/roles/table/system-badge-cell.component.ts`
+- `app/pages/system/users/table/actions-cell.component.ts`
+- `app/pages/system/users/user-form/user-form-dialog.component.html`
+- `app/pages/starrocks/backends/backends.component.ts`
+- `app/pages/starrocks/backends/backends.component.html`
+- `app/pages/starrocks/system-management/system-management.component.ts`
+- `app/pages/starrocks/system-management/system-management.component.scss`
+- `app/pages/starrocks/system-management/system-management.component.html`
+- `app/pages/starrocks/cluster-overview/cluster-overview.component.html`
+- `app/pages/starrocks/cluster-overview/cluster-overview.component.ts`
+- `app/pages/starrocks/materialized-views/materialized-views.component.ts`
+- `app/pages/starrocks/materialized-views/materialized-views.component.html`
+- `app/pages/starrocks/materialized-views/active-toggle-render.component.ts`
+- `app/pages/starrocks/variables/variables.component.ts`
+- `app/pages/starrocks/variables/variables.component.html`
+- `app/pages/starrocks/frontends/frontends.component.html`
+- `app/pages/starrocks/frontends/frontends.component.ts`
+- `app/pages/starrocks/sessions/sessions.component.ts`
+- `app/pages/starrocks/sessions/sessions.component.html`
+- `app/pages/starrocks/dashboard/dashboard.component.ts`
+- `app/pages/starrocks/dashboard/dashboard.component.html`
+- `app/pages/starrocks/queries/profile-queries/profile-queries.component.html`
+- `app/pages/starrocks/queries/profile-queries/profile-queries.component.ts`
+- `app/pages/starrocks/queries/audit-logs/audit-logs.component.html`
+- `app/pages/starrocks/queries/audit-logs/audit-logs.component.ts`
+- `app/pages/starrocks/queries/query-execution/query-execution.component.html`
+- `app/pages/starrocks/clusters/cluster-form/cluster-form.component.html`
+- `app/pages/starrocks/clusters/cluster-form/cluster-form.component.ts`
+- `app/pages/starrocks/clusters/cluster-list/cluster-list.component.ts`
+- `app/pages/starrocks/clusters/cluster-list/cluster-list.component.html`
+- `app/pages/starrocks/clusters/cluster-detail/cluster-detail.component.html`
+- `app/pages/starrocks/clusters/cluster-detail/cluster-detail.component.ts`
+- `app/pages/starrocks/system-management/edit-function-dialog/edit-function-dialog.component.ts`
+- `app/pages/starrocks/system-management/add-function-dialog/add-function-dialog.component.ts`
+- `app/@theme/components/header/header.component.html`
+- `app/@theme/components/header/header.component.ts`
+- `app/@theme/components/cluster-selector/cluster-selector.component.ts`
+- `app/@theme/components/cluster-selector/cluster-selector.component.html`
+- `app/@theme/components/tab-bar/tab-bar.component.ts`
+
+## Modified backend files
+
+- `middleware/auth.rs`
+- `services/overview_service.rs`
+- `services/data_statistics_service.rs`
+- `services/system_function_service.rs`
+- `handlers/system_function.rs`
+- `services/profile_analyzer/mod.rs`
+- `services/profile_analyzer/parser/composer.rs`
+- `services/profile_analyzer/analyzer/rule_engine.rs`
+- `services/profile_analyzer/analyzer/rules/sort.rs`
+- `services/profile_analyzer/analyzer/rules/aggregate.rs`
+- `services/profile_analyzer/analyzer/rules/scan.rs`
+- `services/profile_analyzer/analyzer/rules/project.rs`
+- `services/profile_analyzer/analyzer/rules/common.rs`
+- `services/profile_analyzer/analyzer/rules/fragment.rs`
+- `services/profile_analyzer/analyzer/rules/sink.rs`
+- `services/profile_analyzer/analyzer/rules/query.rs`
+- `services/profile_analyzer/analyzer/rules/exchange.rs`
+- `services/profile_analyzer/analyzer/rules/mod.rs`
+- `services/profile_analyzer/analyzer/rules/join.rs`

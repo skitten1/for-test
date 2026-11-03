@@ -1,0 +1,1 @@
+{{- include "dognauts-common-chart.netpolicies" . }}
